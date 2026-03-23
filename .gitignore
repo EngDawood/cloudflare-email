@@ -168,3 +168,4 @@ dist
 reports/*
 .claude/settings.local.json
 EMAIL-WORKER-SETUP.md
+CLAUDE-*
