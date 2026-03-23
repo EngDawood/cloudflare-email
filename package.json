@@ -4,8 +4,11 @@
 	"private": true,
 	"scripts": {
 		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev"
+		"dev": "pnpm --filter mail-dashboard dev",
+		"start": "pnpm --filter mail-dashboard start",
+		"build": "pnpm --filter mail-dashboard build",
+		"worker:dev": "wrangler dev",
+		"worker:deploy": "wrangler deploy"
 	},
 	"devDependencies": {
 		"wrangler": "^4.74.0"
