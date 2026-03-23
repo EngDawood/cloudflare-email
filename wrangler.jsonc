@@ -21,4 +21,9 @@
       "destination_address": "admin@engdawood.com"
     }
   ]
+
+  // Environment variables required:
+  // - TELEGRAM_BOT_TOKEN: Your Telegram bot token
+  // - TELEGRAM_CHAT_ID: Your Telegram chat ID
+  // - JWT_SECRET: Secret key for signing JWT tokens (use `openssl rand -hex 32`)
 }

@@ -1,3 +1,7 @@
+packages:
+  - "."
+  - "dashboard"
+
 allowBuilds:
   esbuild: false
   sharp: false
