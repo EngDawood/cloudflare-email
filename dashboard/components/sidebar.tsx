@@ -9,7 +9,7 @@ import { Inbox, PenSquare, Settings, LogOut, Mail, Menu, X } from "lucide-react"
 import { useState } from "react";
 
 const navItems = [
-  { href: "/", label: "Inbox", icon: Inbox },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/compose", label: "Compose", icon: PenSquare },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -66,7 +66,7 @@ export function Sidebar() {
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
