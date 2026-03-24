@@ -6,79 +6,78 @@ import { getDraft, saveDraft, clearDraft } from "../lib/draft.js";
 
 const OK = () => new Response("OK");
 const HR = "─".repeat(28);
+const NUMS = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩"];
 
 // ─── Inline keyboard helpers ──────────────────────────────────────────────────
 
 const btn = (text, data) => ({ text, callback_data: data });
 const kbd = (...rows)    => ({ inline_keyboard: rows });
 
-const BTN_SEND   = btn("✅ Send",     "confirm");
-const BTN_CANCEL = btn("❌ Cancel",   "cancel");
-const BTN_RETYPE = btn("✏️ Re-type", "edit_body");
-const BTN_EDIT   = btn("✏️ Edit all", "edit_all");
-const BTN_SKIP   = btn("⏭️ Skip",    "skip_body");
+const BTN_SEND   = btn("✅ Send",             "confirm");
+const BTN_CANCEL = btn("❌ Cancel draft",      "cancel");
+const BTN_RETYPE = btn("✏️ Re-type",          "edit_body");
+const BTN_EDIT   = btn("✏️ Edit all",         "edit_all");
+const BTN_BACK   = btn("⬅️ Back to preview",  "back_to_preview");
+
+const attachBtn = (hasFIle) => hasFIle
+  ? btn("🗑️ Remove file", "remove_attach")
+  : btn("📎 Add file",    "attach_file");
+
+// Build the preview keyboard based on draft type and whether a file is attached
+function previewKbd(draft) {
+  const row1 = [BTN_SEND, BTN_CANCEL];
+  const aBtn = attachBtn(!!draft.filename);
+  if (draft.type === "reply")   return kbd(row1, [BTN_RETYPE, aBtn]);
+  if (draft.type === "send")    return kbd(row1, [BTN_EDIT,   aBtn]);
+  if (draft.type === "forward") return kbd(row1, [aBtn]);
+  return kbd(row1);
+}
 
 // ─── Preview templates ────────────────────────────────────────────────────────
 
-function replyPreview({ email, body }) {
+function fileTag(draft) {
+  return draft.filename
+    ? `\n<b>📎 File:</b> <code>${escHtml(draft.filename)}</code> <i>${escHtml(draft.mimeType)}</i>`
+    : "";
+}
+
+function replyPreview(draft) {
+  const { email, body } = draft;
   return [
-    `📤 <b>Preview — Reply</b>`,
-    ``,
+    `📤 <b>Preview — Reply</b>`, ``,
     `<b>To:</b> ${escHtml(email.fromName ?? email.from)}`,
     `<b>Subject:</b> ${escHtml(`Re: ${email.subject}`)}`,
-    ``,
-    `<code>${HR}</code>`,
-    escHtml(body),
-    `<code>${HR}</code>`,
-  ].join("\n");
+    ``, `<code>${HR}</code>`, escHtml(body), `<code>${HR}</code>`,
+    fileTag(draft),
+  ].filter(v => v !== "").join("\n");
 }
 
-function sendPreview({ to, subject, body }) {
+function sendPreview(draft) {
+  const { to, subject, body } = draft;
   return [
-    `📤 <b>Preview — New Email</b>`,
-    ``,
+    `📤 <b>Preview — New Email</b>`, ``,
     `<b>To:</b> ${escHtml(to)}`,
     `<b>Subject:</b> ${escHtml(subject)}`,
-    ``,
-    `<code>${HR}</code>`,
-    escHtml(body),
-    `<code>${HR}</code>`,
-  ].join("\n");
+    ``, `<code>${HR}</code>`, escHtml(body), `<code>${HR}</code>`,
+    fileTag(draft),
+  ].filter(v => v !== "").join("\n");
 }
 
-function forwardPreview({ to, email }) {
+function forwardPreview(draft) {
+  const { to, email } = draft;
   const body = [
     `---------- Forwarded message ----------`,
     `From: ${email.fromName ?? email.from}`,
-    `Date: ${email.date}`,
-    `Subject: ${email.subject}`,
-    `To: ${email.to}`,
-    ``,
-    email.body ?? "",
+    `Date: ${email.date}`, `Subject: ${email.subject}`, `To: ${email.to}`,
+    ``, email.body ?? "",
   ].join("\n");
   return [
-    `📤 <b>Preview — Forward</b>`,
-    ``,
+    `📤 <b>Preview — Forward</b>`, ``,
     `<b>To:</b> ${escHtml(to)}`,
     `<b>Subject:</b> ${escHtml(`Fwd: ${email.subject}`)}`,
-    ``,
-    `<code>${HR}</code>`,
-    escHtml(body.slice(0, 600)),
-    `<code>${HR}</code>`,
-  ].join("\n");
-}
-
-function attachPreview({ to, subject, body, filename, mimeType }) {
-  return [
-    `📤 <b>Preview — Email with Attachment</b>`,
-    ``,
-    `<b>To:</b> ${escHtml(to)}`,
-    `<b>Subject:</b> ${escHtml(subject)}`,
-    body ? `\n<code>${HR}</code>\n${escHtml(body)}\n<code>${HR}</code>` : null,
-    ``,
-    `<b>📎 File:</b> <code>${escHtml(filename)}</code>`,
-    `<b>Type:</b> ${escHtml(mimeType)}`,
-  ].filter(v => v !== null).join("\n");
+    ``, `<code>${HR}</code>`, escHtml(body.slice(0, 600)), `<code>${HR}</code>`,
+    fileTag(draft),
+  ].filter(v => v !== "").join("\n");
 }
 
 function settingsPanel(settings) {
@@ -92,30 +91,29 @@ function settingsPanel(settings) {
   };
 }
 
-// ─── File info extractor ──────────────────────────────────────────────────────
+// ─── File helpers ─────────────────────────────────────────────────────────────
 
 function extractFileInfo(msg) {
-  if (msg.document) return {
-    fileId:   msg.document.file_id,
-    filename: msg.document.file_name  ?? "attachment",
-    mimeType: msg.document.mime_type  ?? "application/octet-stream",
-  };
-  if (msg.photo) return {
-    fileId:   msg.photo.at(-1).file_id,
-    filename: "photo.jpg",
-    mimeType: "image/jpeg",
-  };
-  if (msg.video) return {
-    fileId:   msg.video.file_id,
-    filename: msg.video.file_name  ?? "video.mp4",
-    mimeType: msg.video.mime_type  ?? "video/mp4",
-  };
-  if (msg.audio) return {
-    fileId:   msg.audio.file_id,
-    filename: msg.audio.file_name  ?? "audio",
-    mimeType: msg.audio.mime_type  ?? "audio/mpeg",
-  };
+  if (msg.document) return { fileId: msg.document.file_id, filename: msg.document.file_name  ?? "attachment",  mimeType: msg.document.mime_type  ?? "application/octet-stream" };
+  if (msg.photo)    return { fileId: msg.photo.at(-1).file_id, filename: "photo.jpg",           mimeType: "image/jpeg" };
+  if (msg.video)    return { fileId: msg.video.file_id,    filename: msg.video.file_name    ?? "video.mp4",    mimeType: msg.video.mime_type    ?? "video/mp4" };
+  if (msg.audio)    return { fileId: msg.audio.file_id,    filename: msg.audio.file_name    ?? "audio",        mimeType: msg.audio.mime_type    ?? "audio/mpeg" };
   return null;
+}
+
+async function buildAttachments(token, draft) {
+  if (!draft.fileId) return [];
+  const buffer = await tgDownloadFile(token, draft.fileId);
+  return [{ filename: draft.filename, buffer, mimeType: draft.mimeType }];
+}
+
+// Sends the right preview message for any draft type
+async function sendDraftPreview(token, chatId, draft) {
+  let text;
+  if (draft.type === "reply")   text = replyPreview(draft);
+  if (draft.type === "send")    text = sendPreview(draft);
+  if (draft.type === "forward") text = forwardPreview(draft);
+  await tgSend(token, chatId, text, { reply_markup: previewKbd(draft) });
 }
 
 // ─── Draft step handler (free-text + file input during active flows) ──────────
@@ -134,85 +132,46 @@ async function handleDraftStep(ctx, draft) {
       draft.body = text;
       draft.step = "preview";
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, replyPreview(draft), {
-        reply_markup: kbd([BTN_SEND, BTN_RETYPE, BTN_CANCEL]),
-      });
+      await sendDraftPreview(token, chatId, draft);
       break;
 
     case "send_to":
       draft.to = text;
       draft.step = "send_subject";
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, `<b>Step 2 / 3</b> — Enter subject:`, {
-        reply_markup: kbd([BTN_CANCEL]),
-      });
+      await tgSend(token, chatId, `<b>Step 2 / 3</b> — Enter subject:`, { reply_markup: kbd([BTN_CANCEL]) });
       break;
 
     case "send_subject":
       draft.subject = text;
       draft.step = "send_body";
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, `<b>Step 3 / 3</b> — Enter message body:`, {
-        reply_markup: kbd([BTN_CANCEL]),
-      });
+      await tgSend(token, chatId, `<b>Step 3 / 3</b> — Enter message body:`, { reply_markup: kbd([BTN_CANCEL]) });
       break;
 
     case "send_body":
       draft.body = text;
       draft.step = "preview";
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, sendPreview(draft), {
-        reply_markup: kbd([BTN_SEND, BTN_EDIT, BTN_CANCEL]),
-      });
+      await sendDraftPreview(token, chatId, draft);
       break;
 
     case "forward_to":
       draft.to = text;
       draft.step = "preview";
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, forwardPreview(draft), {
-        reply_markup: kbd([BTN_SEND, BTN_CANCEL]),
-      });
+      await sendDraftPreview(token, chatId, draft);
       break;
 
-    case "attach_to":
-      draft.to = text;
-      draft.step = "attach_subject";
-      await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, `<b>Step 2 / 4</b> — Enter subject:`, {
-        reply_markup: kbd([BTN_CANCEL]),
-      });
-      break;
-
-    case "attach_subject":
-      draft.subject = text;
-      draft.step = "attach_body";
-      await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, `<b>Step 3 / 4</b> — Enter message body (or skip):`, {
-        reply_markup: kbd([BTN_SKIP, BTN_CANCEL]),
-      });
-      break;
-
-    case "attach_body":
-      draft.body = text;
-      draft.step = "attach_file";
-      await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, `<b>Step 4 / 4</b> — Send the file to attach:`, {
-        reply_markup: kbd([BTN_CANCEL]),
-      });
-      break;
-
-    case "attach_file": {
-      const fileInfo = extractFileInfo(msg);
-      if (!fileInfo) {
+    case "awaiting_file": {
+      const info = extractFileInfo(msg);
+      if (!info) {
         await tgSend(token, chatId, "📎 Please send a file (document, photo, video, or audio).");
         return OK();
       }
-      Object.assign(draft, fileInfo, { step: "preview" });
+      Object.assign(draft, info, { step: "preview" });
       await saveDraft(env, chatId, draft);
-      await tgSend(token, chatId, attachPreview(draft), {
-        reply_markup: kbd([BTN_SEND, BTN_CANCEL]),
-      });
+      await sendDraftPreview(token, chatId, draft);
       break;
     }
 
@@ -220,14 +179,11 @@ async function handleDraftStep(ctx, draft) {
       const addr = text.trim();
       await saveSettings(env, { autoForward: addr });
       await clearDraft(env, chatId);
-      // Update the original settings message if we stored its ID
       if (draft.settingsMsgId) {
         const { text: t, reply_markup } = settingsPanel({ autoForward: addr });
         await tgEditMessage(token, chatId, draft.settingsMsgId, t, { reply_markup });
       }
-      await tgSend(token, chatId,
-        `✅ <b>Auto-forward enabled</b>\nForwarding to: <code>${escHtml(addr)}</code>`
-      );
+      await tgSend(token, chatId, `✅ <b>Auto-forward enabled</b>\nForwarding to: <code>${escHtml(addr)}</code>`);
       break;
     }
   }
@@ -235,7 +191,7 @@ async function handleDraftStep(ctx, draft) {
   return OK();
 }
 
-// ─── Callback query handler (inline button presses) ──────────────────────────
+// ─── Callback query handler ───────────────────────────────────────────────────
 
 async function handleCallbackQuery(cq, env) {
   const token  = env.TELEGRAM_BOT_TOKEN;
@@ -244,7 +200,7 @@ async function handleCallbackQuery(cq, env) {
 
   await tgAnswerCallback(token, queryId);
 
-  // ── Actions that start new flows (no existing draft needed) ──────────────
+  // ── Start new flows from /recent list buttons ──────────────────────────────
 
   if (data.startsWith("reply_start:")) {
     const id  = data.slice("reply_start:".length);
@@ -256,9 +212,7 @@ async function handleCallbackQuery(cq, env) {
       `📨 <b>Replying to #${escHtml(id)}</b>`, ``,
       `<b>From:</b> ${escHtml(email.fromName ?? email.from)}`,
       `<b>Subject:</b> ${escHtml(email.subject)}`,
-      ``, `<code>${HR}</code>`,
-      escHtml((email.body ?? "").slice(0, 600)),
-      `<code>${HR}</code>`, ``,
+      ``, `<code>${HR}</code>`, escHtml((email.body ?? "").slice(0, 600)), `<code>${HR}</code>`, ``,
       `✏️ <i>Type your reply:</i>`,
     ].join("\n"), { reply_markup: kbd([BTN_CANCEL]) });
     await saveDraft(env, chatId, { type: "reply", step: "reply_body", emailId: id, email });
@@ -275,14 +229,14 @@ async function handleCallbackQuery(cq, env) {
       `📨 <b>Forwarding #${escHtml(id)}</b>`, ``,
       `<b>From:</b> ${escHtml(email.fromName ?? email.from)}`,
       `<b>Subject:</b> ${escHtml(email.subject)}`,
-      ``, `<code>${HR}</code>`,
-      escHtml((email.body ?? "").slice(0, 400)),
-      `<code>${HR}</code>`, ``,
+      ``, `<code>${HR}</code>`, escHtml((email.body ?? "").slice(0, 400)), `<code>${HR}</code>`, ``,
       `✉️ <i>Enter the destination email address:</i>`,
     ].join("\n"), { reply_markup: kbd([BTN_CANCEL]) });
     await saveDraft(env, chatId, { type: "forward", step: "forward_to", emailId: id, email });
     return;
   }
+
+  // ── Settings actions ───────────────────────────────────────────────────────
 
   if (data === "settings_disable") {
     await saveSettings(env, { autoForward: null });
@@ -293,35 +247,49 @@ async function handleCallbackQuery(cq, env) {
 
   if (data === "settings_set_addr") {
     await clearDraft(env, chatId);
-    await saveDraft(env, chatId, {
-      type: "settings", step: "settings_addr", settingsMsgId: cbMsg.message_id,
-    });
-    await tgSend(token, chatId, `📧 Enter the email address to forward to:`, {
-      reply_markup: kbd([BTN_CANCEL]),
-    });
+    await saveDraft(env, chatId, { type: "settings", step: "settings_addr", settingsMsgId: cbMsg.message_id });
+    await tgSend(token, chatId, `📧 Enter the email address to forward to:`, { reply_markup: kbd([BTN_CANCEL]) });
     return;
   }
 
-  if (data === "skip_body") {
+  // ── Attachment actions ─────────────────────────────────────────────────────
+
+  if (data === "attach_file") {
     const draft = await getDraft(env, chatId);
     if (!draft) { await tgEditMessage(token, chatId, cbMsg.message_id, "❌ <i>This draft has expired.</i>"); return; }
-    draft.body = "";
-    draft.step = "attach_file";
+    draft.step = "awaiting_file";
     await saveDraft(env, chatId, draft);
-    await tgEditMessage(token, chatId, cbMsg.message_id, "⏭️ <i>Body skipped.</i>");
-    await tgSend(token, chatId, `<b>Step 4 / 4</b> — Send the file to attach:`, {
-      reply_markup: kbd([BTN_CANCEL]),
-    });
+    await tgSend(token, chatId, `📎 <i>Send the file to attach:</i>`, { reply_markup: kbd([BTN_BACK, BTN_CANCEL]) });
+    return;
+  }
+
+  if (data === "remove_attach") {
+    const draft = await getDraft(env, chatId);
+    if (!draft) { await tgEditMessage(token, chatId, cbMsg.message_id, "❌ <i>This draft has expired.</i>"); return; }
+    delete draft.fileId;
+    delete draft.filename;
+    delete draft.mimeType;
+    draft.step = "preview";
+    await saveDraft(env, chatId, draft);
+    await tgEditMessage(token, chatId, cbMsg.message_id, "🗑️ <i>Attachment removed.</i>");
+    await sendDraftPreview(token, chatId, draft);
+    return;
+  }
+
+  if (data === "back_to_preview") {
+    const draft = await getDraft(env, chatId);
+    if (!draft) { await tgEditMessage(token, chatId, cbMsg.message_id, "❌ <i>This draft has expired.</i>"); return; }
+    draft.step = "preview";
+    await saveDraft(env, chatId, draft);
+    await tgEditMessage(token, chatId, cbMsg.message_id, "⬅️ <i>Back to preview.</i>");
+    await sendDraftPreview(token, chatId, draft);
     return;
   }
 
   // ── Actions that require an existing draft ─────────────────────────────────
 
   const draft = await getDraft(env, chatId);
-  if (!draft) {
-    await tgEditMessage(token, chatId, cbMsg.message_id, "❌ <i>This draft has expired.</i>");
-    return;
-  }
+  if (!draft) { await tgEditMessage(token, chatId, cbMsg.message_id, "❌ <i>This draft has expired.</i>"); return; }
 
   if (data === "cancel") {
     await clearDraft(env, chatId);
@@ -340,63 +308,47 @@ async function handleCallbackQuery(cq, env) {
   if (data === "edit_all") {
     await saveDraft(env, chatId, { type: "send", step: "send_to" });
     await tgEditMessage(token, chatId, cbMsg.message_id, "✏️ <i>Starting over.</i>");
-    await tgSend(token, chatId,
-      `📧 <b>New Email</b>\n\n<b>Step 1 / 3</b> — Enter recipient email:`,
-      { reply_markup: kbd([BTN_CANCEL]) }
-    );
+    await tgSend(token, chatId, `📧 <b>New Email</b>\n\n<b>Step 1 / 3</b> — Enter recipient email:`, { reply_markup: kbd([BTN_CANCEL]) });
     return;
   }
 
   if (data === "confirm") {
     try {
+      const attachments = await buildAttachments(token, draft);
       let successText;
 
       if (draft.type === "reply") {
-        await sendEmail(env, {
-          to: draft.email.from, subject: `Re: ${draft.email.subject}`,
-          body: draft.body, inReplyTo: draft.email.messageId,
-        });
+        await sendEmail(env, { to: draft.email.from, subject: `Re: ${draft.email.subject}`, body: draft.body, inReplyTo: draft.email.messageId, attachments });
         successText = [
           `✅ <b>Reply sent</b>`,
           `<b>To:</b> ${escHtml(draft.email.fromName ?? draft.email.from)}`,
           `<b>Subject:</b> ${escHtml(`Re: ${draft.email.subject}`)}`,
-        ].join("\n");
+          draft.filename ? `<b>📎 File:</b> <code>${escHtml(draft.filename)}</code>` : null,
+        ].filter(Boolean).join("\n");
 
       } else if (draft.type === "send") {
-        await sendEmail(env, { to: draft.to, subject: draft.subject, body: draft.body });
+        await sendEmail(env, { to: draft.to, subject: draft.subject, body: draft.body, attachments });
         successText = [
           `✅ <b>Email sent</b>`,
           `<b>To:</b> ${escHtml(draft.to)}`,
           `<b>Subject:</b> ${escHtml(draft.subject)}`,
-        ].join("\n");
+          draft.filename ? `<b>📎 File:</b> <code>${escHtml(draft.filename)}</code>` : null,
+        ].filter(Boolean).join("\n");
 
       } else if (draft.type === "forward") {
         const fwdBody = [
           `---------- Forwarded message ----------`,
           `From: ${draft.email.fromName ?? draft.email.from}`,
-          `Date: ${draft.email.date}`, `Subject: ${draft.email.subject}`,
-          `To: ${draft.email.to}`, ``, draft.email.body ?? "",
+          `Date: ${draft.email.date}`, `Subject: ${draft.email.subject}`, `To: ${draft.email.to}`,
+          ``, draft.email.body ?? "",
         ].join("\n");
-        await sendEmail(env, { to: draft.to, subject: `Fwd: ${draft.email.subject}`, body: fwdBody });
+        await sendEmail(env, { to: draft.to, subject: `Fwd: ${draft.email.subject}`, body: fwdBody, attachments });
         successText = [
           `✅ <b>Email forwarded</b>`,
           `<b>To:</b> ${escHtml(draft.to)}`,
           `<b>Subject:</b> ${escHtml(`Fwd: ${draft.email.subject}`)}`,
-        ].join("\n");
-
-      } else if (draft.type === "attach") {
-        const buffer = await tgDownloadFile(token, draft.fileId);
-        await sendEmail(env, {
-          to: draft.to, subject: draft.subject,
-          body: draft.body || `Please find the attached file: ${draft.filename}`,
-          attachments: [{ filename: draft.filename, buffer, mimeType: draft.mimeType }],
-        });
-        successText = [
-          `✅ <b>Email with attachment sent</b>`,
-          `<b>To:</b> ${escHtml(draft.to)}`,
-          `<b>Subject:</b> ${escHtml(draft.subject)}`,
-          `<b>File:</b> <code>${escHtml(draft.filename)}</code>`,
-        ].join("\n");
+          draft.filename ? `<b>📎 File:</b> <code>${escHtml(draft.filename)}</code>` : null,
+        ].filter(Boolean).join("\n");
       }
 
       await clearDraft(env, chatId);
@@ -423,9 +375,7 @@ async function startReply(ctx) {
     `<b>From:</b> ${escHtml(email.fromName ?? email.from)}`,
     `<b>Subject:</b> ${escHtml(email.subject)}`,
     `<b>Date:</b> ${escHtml(email.date)}`,
-    ``, `<code>${HR}</code>`,
-    escHtml((email.body ?? "").slice(0, 600)),
-    `<code>${HR}</code>`, ``,
+    ``, `<code>${HR}</code>`, escHtml((email.body ?? "").slice(0, 600)), `<code>${HR}</code>`, ``,
     `✏️ <i>Type your reply message:</i>`,
   ].join("\n"), { reply_markup: kbd([BTN_CANCEL]) });
   await saveDraft(env, chatId, { type: "reply", step: "reply_body", emailId: id, email });
@@ -435,10 +385,7 @@ async function startReply(ctx) {
 async function startSend(ctx) {
   const { token, chatId, env } = ctx;
   await saveDraft(env, chatId, { type: "send", step: "send_to" });
-  await tgSend(token, chatId,
-    `📧 <b>New Email</b>\n\n<b>Step 1 / 3</b> — Enter recipient email:`,
-    { reply_markup: kbd([BTN_CANCEL]) }
-  );
+  await tgSend(token, chatId, `📧 <b>New Email</b>\n\n<b>Step 1 / 3</b> — Enter recipient email:`, { reply_markup: kbd([BTN_CANCEL]) });
   return OK();
 }
 
@@ -455,22 +402,10 @@ async function startForward(ctx) {
     `<b>From:</b> ${escHtml(email.fromName ?? email.from)}`,
     `<b>Subject:</b> ${escHtml(email.subject)}`,
     `<b>Date:</b> ${escHtml(email.date)}`,
-    ``, `<code>${HR}</code>`,
-    escHtml((email.body ?? "").slice(0, 400)),
-    `<code>${HR}</code>`, ``,
+    ``, `<code>${HR}</code>`, escHtml((email.body ?? "").slice(0, 400)), `<code>${HR}</code>`, ``,
     `✉️ <i>Enter the destination email address:</i>`,
   ].join("\n"), { reply_markup: kbd([BTN_CANCEL]) });
   await saveDraft(env, chatId, { type: "forward", step: "forward_to", emailId: id, email });
-  return OK();
-}
-
-async function startAttach(ctx) {
-  const { token, chatId, env } = ctx;
-  await saveDraft(env, chatId, { type: "attach", step: "attach_to" });
-  await tgSend(token, chatId,
-    `📎 <b>Email with Attachment</b>\n\n<b>Step 1 / 4</b> — Enter recipient email:`,
-    { reply_markup: kbd([BTN_CANCEL]) }
-  );
   return OK();
 }
 
@@ -482,25 +417,26 @@ async function handleSettings(ctx) {
   return OK();
 }
 
-async function handleList(ctx) {
-  const { token, chatId, env } = ctx;
+async function handleRecent(ctx) {
+  const { token, chatId, env, text } = ctx;
+  const m = text.match(/\b(\d+)$/);
+  const n = Math.min(Math.max(parseInt(m?.[1] ?? "5"), 1), 10);
+
   const list = await env.EMAIL_STORE.list({ prefix: "email:" });
-  if (list.keys.length === 0) {
-    await tgSend(token, chatId, "📭 No emails stored.");
-    return OK();
-  }
+  if (list.keys.length === 0) { await tgSend(token, chatId, "📭 No emails stored."); return OK(); }
 
-  const NUMS = ["①", "②", "③", "④", "⑤"];
-  const keys = list.keys.slice(0, 5);
-  const raws = await Promise.all(keys.map(k => env.EMAIL_STORE.get(k.name)));
+  // Load all stored emails, sort by date descending, take n
+  const all  = await Promise.all(list.keys.map(k => env.EMAIL_STORE.get(k.name)));
+  const emails = all
+    .filter(Boolean)
+    .map(r => JSON.parse(r))
+    .sort((a, b) => new Date(b.date ?? 0) - new Date(a.date ?? 0))
+    .slice(0, n);
 
-  const lines   = ["📋 <b>Recent emails:</b>"];
+  const lines   = [`📋 <b>Last ${emails.length} email${emails.length !== 1 ? "s" : ""}:</b>`];
   const kbdRows = [];
 
-  let i = 0;
-  for (const raw of raws) {
-    if (!raw) continue;
-    const { id, fromName, subject, date } = JSON.parse(raw);
+  emails.forEach(({ id, fromName, subject, date }, i) => {
     lines.push(
       ``,
       `${NUMS[i]} <code>#${escHtml(id)}</code> — ${escHtml(subject)}`,
@@ -510,8 +446,7 @@ async function handleList(ctx) {
       btn(`↩️ Reply ${NUMS[i]}`,   `reply_start:${id}`),
       btn(`↗️ Forward ${NUMS[i]}`, `fwd_start:${id}`),
     ]);
-    i++;
-  }
+  });
 
   await tgSend(token, chatId, lines.join("\n"), { reply_markup: kbd(...kbdRows) });
   return OK();
@@ -523,15 +458,16 @@ async function handleHelp(ctx) {
     "📬 <b>engdawood.com Mail Bot</b>", "",
     "<b>Receiving:</b>",
     "Emails appear here automatically with quick-reply buttons.", "",
-    "<b>Guided flows (step-by-step + preview):</b>",
+    "<b>Guided flows (with preview before sending):</b>",
     "<code>/reply &lt;id&gt;</code> — Reply to an email",
     "<code>/forward &lt;id&gt;</code> — Forward an email",
     "<code>/send</code> — Compose a new email",
-    "<code>/attach</code> — Send an email with a file attachment",
+    "<i>Attach a file via the 📎 button in any preview</i>",
     "<code>/cancel</code> — Cancel current draft", "",
     "<b>Other:</b>",
-    "<code>/list</code> — Recent emails with reply/forward buttons",
-    "<code>/settings</code> — Configure auto-forward (interactive)",
+    "<code>/recent</code> — Last 5 emails with reply/forward buttons",
+    "<code>/recent 10</code> — Last N emails (max 10)",
+    "<code>/settings</code> — Configure auto-forward",
   ].join("\n"));
   return OK();
 }
@@ -540,10 +476,9 @@ async function handleHelp(ctx) {
 
 function makeBotCtx(env, msg) {
   return {
-    token:   env.TELEGRAM_BOT_TOKEN,
-    chatId:  env.TELEGRAM_CHAT_ID,
-    env,
-    msg,
+    token:  env.TELEGRAM_BOT_TOKEN,
+    chatId: env.TELEGRAM_CHAT_ID,
+    env, msg,
     text:    msg.text?.trim()    ?? "",
     caption: msg.caption?.trim() ?? "",
   };
@@ -571,12 +506,12 @@ export async function handleTelegramWebhook(request, env) {
   const activeDraft = await getDraft(env, ctx.chatId);
   const hasFile     = !!(msg.document || msg.photo || msg.video || msg.audio);
 
-  // File received while waiting for an attachment — continue the attach flow
-  if (activeDraft?.step === "attach_file" && hasFile) {
+  // File received while waiting for an attachment — continue the flow
+  if (activeDraft?.step === "awaiting_file" && hasFile) {
     return handleDraftStep(ctx, activeDraft);
   }
 
-  // /cancel — check BEFORE the draft-clear block so it can report what it cancelled
+  // /cancel — before the draft-clear block so it can report what it cancelled
   if (ctx.text.match(/^\/cancel/i)) {
     if (activeDraft) {
       await clearDraft(env, ctx.chatId);
@@ -591,17 +526,16 @@ export async function handleTelegramWebhook(request, env) {
   if (ctx.text.startsWith("/")) {
     if (activeDraft) await clearDraft(env, ctx.chatId);
 
-    if (ctx.text.match(/^\/reply/i))         return startReply(ctx);
-    if (ctx.text.match(/^\/send/i))          return startSend(ctx);
-    if (ctx.text.match(/^\/forward/i))       return startForward(ctx);
-    if (ctx.text.match(/^\/attach/i))        return startAttach(ctx);
-    if (ctx.text.startsWith("/settings"))    return handleSettings(ctx);
-    if (ctx.text.startsWith("/list"))        return handleList(ctx);
-    if (ctx.text.match(/^\/(help|start)/i))  return handleHelp(ctx);
+    if (ctx.text.match(/^\/reply/i))                               return startReply(ctx);
+    if (ctx.text.match(/^\/send/i))                                return startSend(ctx);
+    if (ctx.text.match(/^\/forward/i))                             return startForward(ctx);
+    if (ctx.text.startsWith("/settings"))                          return handleSettings(ctx);
+    if (ctx.text.match(/^\/(recent|list)/i))                       return handleRecent(ctx);
+    if (ctx.text.match(/^\/(help|start)/i))                        return handleHelp(ctx);
     return OK();
   }
 
-  // Free text input → advance the active draft to its next step
+  // Free text → advance the active draft to its next step
   if (activeDraft && ctx.text !== "") return handleDraftStep(ctx, activeDraft);
 
   return OK();

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Dashboard - Eng. Dawood</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .email-body-content { white-space: pre-wrap; word-break: break-word; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200 py-4 px-6 flex justify-between items-center shrink-0">
+        <h1 class="text-xl font-semibold text-gray-800">Email Dashboard</h1>
+        <button id="logoutBtn" class="hidden text-sm text-red-600 hover:text-red-800 font-medium">Logout</button>
+    </header>
+
+    <!-- Login View -->
+    <div id="loginView" class="flex-1 flex items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md border border-gray-100">
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Authentication</h2>
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label for="apiKey" class="block text-sm font-medium text-gray-700 mb-1">Dashboard API Key</label>
+                    <input type="password" id="apiKey" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="Enter your secret key">
+                </div>
+                <button type="submit"
+                    class="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">
+                    Access Dashboard
+                </button>
+                <div id="loginError" class="text-red-500 text-sm hidden text-center mt-2">Invalid API Key or connection error.</div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView" class="hidden flex-1 flex overflow-hidden">
+
+        <!-- Sidebar: Email List -->
+        <div id="emailSidebar" class="w-full md:w-1/3 md:min-w-[300px] border-r border-gray-200 bg-white flex flex-col overflow-hidden shrink-0">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="font-semibold text-gray-700">Inbox</h3>
+                <button id="refreshBtn" class="text-blue-600 hover:text-blue-800 p-1" title="Refresh">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
+            </div>
+            <div id="emailList" class="flex-1 overflow-y-auto">
+                <div class="p-8 text-center text-gray-500 text-sm">Loading emails...</div>
+            </div>
+        </div>
+
+        <!-- Main Content: Email Viewer / Compose -->
+        <div id="emailMain" class="hidden md:flex flex-1 bg-white flex-col overflow-hidden relative">
+
+            <!-- Default / Empty State -->
+            <div id="emptyState" class="flex-1 flex items-center justify-center text-gray-400">
+                Select an email to read or compose a new one.
+            </div>
+
+            <!-- Email Detail View -->
+            <div id="emailDetailView" class="hidden flex-1 flex flex-col overflow-hidden">
+                <div class="p-4 md:p-6 border-b border-gray-200 shrink-0 bg-white">
+                    <div class="flex items-start gap-2 mb-4">
+                        <button id="backBtn" class="md:hidden text-blue-600 hover:text-blue-800 p-1 mt-1 shrink-0" title="Back to inbox">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <h2 id="detailSubject" class="flex-1 text-xl md:text-2xl font-bold text-gray-900 line-clamp-2"></h2>
+                    </div>
+                    <div class="flex flex-col gap-1 text-sm text-gray-600">
+                        <div class="flex justify-between items-center">
+                            <div><span class="font-medium">From:</span> <span id="detailFrom"></span></div>
+                            <div id="detailDate" class="text-gray-400 text-xs whitespace-nowrap ml-2"></div>
+                        </div>
+                        <div><span class="font-medium">To:</span> <span id="detailTo"></span></div>
+                    </div>
+                </div>
+                <div class="p-4 md:p-6 flex-1 overflow-y-auto bg-white">
+                    <div id="detailBody" class="email-body-content text-gray-800 leading-relaxed text-sm font-mono bg-gray-50 p-4 rounded-md border border-gray-100"></div>
+                </div>
+                <div class="p-4 border-t border-gray-200 bg-gray-50 shrink-0 flex items-center gap-3">
+                    <button id="replyBtn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition text-sm font-medium">
+                        Reply
+                    </button>
+                    <button id="deleteBtn" class="text-red-500 hover:text-red-700 p-2 bg-red-50 hover:bg-red-100 rounded transition" title="Delete Email">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                    <!-- Inline delete confirmation -->
+                    <div id="deleteConfirm" class="hidden items-center gap-2 ml-auto text-sm">
+                        <span class="text-gray-600">Delete this email?</span>
+                        <button id="deleteConfirmYes" class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition">Yes</button>
+                        <button id="deleteConfirmNo" class="bg-gray-200 text-gray-700 px-3 py-1 rounded hover:bg-gray-300 transition">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compose View (Overlay) -->
+            <div id="composeView" class="hidden absolute inset-0 bg-white z-10 flex flex-col">
+                <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
+                    <h3 class="font-semibold text-gray-800" id="composeTitle">New Message</h3>
+                    <button id="closeComposeBtn" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <form id="composeForm" class="flex-1 flex flex-col p-6 overflow-y-auto gap-4">
+                    <input type="hidden" id="composeInReplyTo">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">To</label>
+                        <input type="email" id="composeTo" required class="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-blue-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Subject</label>
+                        <input type="text" id="composeSubject" required class="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-blue-500 transition">
+                    </div>
+                    <div class="flex-1 flex flex-col pt-2">
+                        <textarea id="composeBody" required class="flex-1 w-full border border-gray-200 rounded-md p-3 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none font-sans text-sm" placeholder="Write your message here..."></textarea>
+                    </div>
+                    <div class="flex justify-between items-center pt-2 shrink-0">
+                        <div id="composeStatus" class="text-sm text-gray-500"></div>
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition font-medium flex items-center gap-2">
+                            <span>Send</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Floating Action Button for Compose -->
+            <button id="fabCompose" class="absolute bottom-6 right-6 bg-blue-600 text-white p-4 rounded-full shadow-lg hover:bg-blue-700 hover:scale-105 transition duration-200 transform z-0" title="Compose New Email">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let apiKey = localStorage.getItem('DASHBOARD_API_KEY') || '';
+        let currentEmails = [];
+        let selectedEmailId = null;
+        let readIds = new Set(JSON.parse(localStorage.getItem('DASHBOARD_READ_IDS') || '[]'));
+
+        // DOM Elements
+        const el = {
+            loginView: document.getElementById('loginView'),
+            dashboardView: document.getElementById('dashboardView'),
+            loginForm: document.getElementById('loginForm'),
+            apiKeyInput: document.getElementById('apiKey'),
+            loginError: document.getElementById('loginError'),
+            logoutBtn: document.getElementById('logoutBtn'),
+            emailSidebar: document.getElementById('emailSidebar'),
+            emailMain: document.getElementById('emailMain'),
+            emailList: document.getElementById('emailList'),
+            refreshBtn: document.getElementById('refreshBtn'),
+            emptyState: document.getElementById('emptyState'),
+            emailDetailView: document.getElementById('emailDetailView'),
+            detailSubject: document.getElementById('detailSubject'),
+            detailFrom: document.getElementById('detailFrom'),
+            detailTo: document.getElementById('detailTo'),
+            detailDate: document.getElementById('detailDate'),
+            detailBody: document.getElementById('detailBody'),
+            deleteBtn: document.getElementById('deleteBtn'),
+            deleteConfirm: document.getElementById('deleteConfirm'),
+            deleteConfirmYes: document.getElementById('deleteConfirmYes'),
+            deleteConfirmNo: document.getElementById('deleteConfirmNo'),
+            backBtn: document.getElementById('backBtn'),
+            replyBtn: document.getElementById('replyBtn'),
+            fabCompose: document.getElementById('fabCompose'),
+            composeView: document.getElementById('composeView'),
+            closeComposeBtn: document.getElementById('closeComposeBtn'),
+            composeForm: document.getElementById('composeForm'),
+            composeTo: document.getElementById('composeTo'),
+            composeSubject: document.getElementById('composeSubject'),
+            composeBody: document.getElementById('composeBody'),
+            composeInReplyTo: document.getElementById('composeInReplyTo'),
+            composeTitle: document.getElementById('composeTitle'),
+            composeStatus: document.getElementById('composeStatus')
+        };
+
+        function isMobile() {
+            return window.innerWidth < 768;
+        }
+
+        function saveReadIds() {
+            localStorage.setItem('DASHBOARD_READ_IDS', JSON.stringify([...readIds]));
+        }
+
+        // Initialize
+        function init() {
+            if (apiKey) {
+                showDashboard();
+                fetchEmails();
+            } else {
+                showLogin();
+            }
+        }
+
+        // View Management
+        function showLogin() {
+            el.loginView.classList.remove('hidden');
+            el.dashboardView.classList.add('hidden');
+            el.logoutBtn.classList.add('hidden');
+        }
+
+        function showDashboard() {
+            el.loginView.classList.add('hidden');
+            el.dashboardView.classList.remove('hidden');
+            el.logoutBtn.classList.remove('hidden');
+        }
+
+        function showEmailDetail() {
+            el.emptyState.classList.add('hidden');
+            el.emailDetailView.classList.remove('hidden');
+            el.composeView.classList.add('hidden');
+            hideDeleteConfirm();
+            if (isMobile()) {
+                el.emailSidebar.classList.add('hidden');
+                el.emailMain.classList.remove('hidden');
+                el.emailMain.classList.add('flex');
+            }
+        }
+
+        function showSidebar() {
+            el.emailSidebar.classList.remove('hidden');
+            el.emailMain.classList.add('hidden');
+            el.emailMain.classList.remove('flex');
+            selectedEmailId = null;
+        }
+
+        function showCompose() {
+            el.composeView.classList.remove('hidden');
+            el.composeStatus.textContent = '';
+            if (isMobile()) {
+                el.emailSidebar.classList.add('hidden');
+                el.emailMain.classList.remove('hidden');
+                el.emailMain.classList.add('flex');
+            }
+        }
+
+        function hideCompose() {
+            el.composeView.classList.add('hidden');
+        }
+
+        function showDeleteConfirm() {
+            el.deleteBtn.classList.add('hidden');
+            el.deleteConfirm.classList.remove('hidden');
+            el.deleteConfirm.classList.add('flex');
+        }
+
+        function hideDeleteConfirm() {
+            el.deleteBtn.classList.remove('hidden');
+            el.deleteConfirm.classList.add('hidden');
+            el.deleteConfirm.classList.remove('flex');
+        }
+
+        // API Helpers
+        async function api(path, options = {}) {
+            const res = await fetch(API_BASE + path, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            if (!res.ok) {
+                if (res.status === 401) throw new Error('Unauthorized');
+                throw new Error(`API Error: ${res.status}`);
+            }
+            return res.json();
+        }
+
+        // Event Listeners
+        el.loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            apiKey = el.apiKeyInput.value.trim();
+            el.loginError.classList.add('hidden');
+            try {
+                await api('/emails');
+                localStorage.setItem('DASHBOARD_API_KEY', apiKey);
+                showDashboard();
+                fetchEmails();
+            } catch (err) {
+                el.loginError.textContent = err.message === 'Unauthorized' ? 'Invalid API key.' : 'Connection error. Try again.';
+                el.loginError.classList.remove('hidden');
+                apiKey = '';
+            }
+        });
+
+        el.logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('DASHBOARD_API_KEY');
+            apiKey = '';
+            showLogin();
+            el.apiKeyInput.value = '';
+        });
+
+        el.refreshBtn.addEventListener('click', fetchEmails);
+
+        el.emailList.addEventListener('click', (e) => {
+            const item = e.target.closest('.email-item');
+            if (item) selectEmail(item.dataset.id);
+        });
+
+        el.backBtn.addEventListener('click', () => {
+            showSidebar();
+            el.emailDetailView.classList.add('hidden');
+            el.emptyState.classList.remove('hidden');
+        });
+
+        el.deleteBtn.addEventListener('click', showDeleteConfirm);
+        el.deleteConfirmNo.addEventListener('click', hideDeleteConfirm);
+
+        el.deleteConfirmYes.addEventListener('click', async () => {
+            if (!selectedEmailId) return;
+            hideDeleteConfirm();
+            try {
+                await api(`/emails/${selectedEmailId}`, { method: 'DELETE' });
+                readIds.delete(selectedEmailId);
+                saveReadIds();
+                selectedEmailId = null;
+                if (isMobile()) {
+                    showSidebar();
+                } else {
+                    el.emptyState.classList.remove('hidden');
+                    el.emailDetailView.classList.add('hidden');
+                }
+                await fetchEmails();
+            } catch (err) {
+                hideDeleteConfirm();
+                const errDiv = document.createElement('span');
+                errDiv.className = 'text-red-500 text-xs ml-2';
+                errDiv.textContent = 'Delete failed';
+                el.deleteBtn.insertAdjacentElement('afterend', errDiv);
+                setTimeout(() => errDiv.remove(), 3000);
+            }
+        });
+
+        el.fabCompose.addEventListener('click', () => {
+            el.composeTitle.textContent = 'New Message';
+            el.composeForm.reset();
+            el.composeInReplyTo.value = '';
+            showCompose();
+        });
+
+        el.closeComposeBtn.addEventListener('click', () => {
+            hideCompose();
+            if (isMobile() && !selectedEmailId) showSidebar();
+        });
+
+        el.replyBtn.addEventListener('click', () => {
+            const email = currentEmails.find(e => e.id === selectedEmailId);
+            if (!email) return;
+
+            el.composeTitle.textContent = 'Reply';
+            el.composeTo.value = email.from;
+            el.composeSubject.value = email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`;
+
+            const quotedBody = email.body.split('\n').map(line => `> ${line}`).join('\n');
+            el.composeBody.value = `\n\n\nOn ${new Date(email.date).toLocaleString()}, ${email.fromName} wrote:\n${quotedBody}`;
+
+            el.composeInReplyTo.value = email.messageId || '';
+            showCompose();
+            el.composeBody.focus();
+            el.composeBody.setSelectionRange(0, 0);
+        });
+
+        el.composeForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = el.composeForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50');
+            el.composeStatus.textContent = 'Sending...';
+            el.composeStatus.className = 'text-sm text-blue-500';
+
+            try {
+                await api('/emails/send', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        to: el.composeTo.value,
+                        subject: el.composeSubject.value,
+                        body: el.composeBody.value,
+                        inReplyTo: el.composeInReplyTo.value || null
+                    })
+                });
+                el.composeStatus.textContent = 'Sent successfully!';
+                el.composeStatus.className = 'text-sm text-green-500';
+                setTimeout(() => {
+                    hideCompose();
+                    if (isMobile() && !selectedEmailId) showSidebar();
+                    submitBtn.disabled = false;
+                    submitBtn.classList.remove('opacity-50');
+                }, 1500);
+            } catch (err) {
+                el.composeStatus.textContent = `Failed to send: ${err.message}`;
+                el.composeStatus.className = 'text-sm text-red-500';
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50');
+            }
+        });
+
+        // Functions
+        async function fetchEmails() {
+            try {
+                el.emailList.textContent = '';
+                const placeholder = document.createElement('div');
+                placeholder.className = 'p-8 text-center text-gray-400 text-sm animate-pulse';
+                placeholder.textContent = 'Loading...';
+                el.emailList.appendChild(placeholder);
+
+                const emails = await api('/emails');
+                currentEmails = emails.sort((a, b) => new Date(b.date) - new Date(a.date));
+                renderEmailList();
+            } catch (err) {
+                if (err.message === 'Unauthorized') {
+                    localStorage.removeItem('DASHBOARD_API_KEY');
+                    apiKey = '';
+                    showLogin();
+                } else {
+                    el.emailList.textContent = '';
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'p-4 text-red-500 text-sm';
+                    errDiv.textContent = `Failed to load: ${err.message}`;
+                    el.emailList.appendChild(errDiv);
+                }
+            }
+        }
+
+        function makeEmailItem(email) {
+            const isRead = readIds.has(email.id);
+            const isSelected = selectedEmailId === email.id;
+
+            const item = document.createElement('div');
+            item.className = `email-item cursor-pointer p-4 border-b border-gray-100 hover:bg-blue-50 transition border-l-4 ${isSelected ? 'bg-blue-50 border-l-blue-500' : 'border-l-transparent'}`;
+            item.dataset.id = email.id;
+
+            const header = document.createElement('div');
+            header.className = 'flex justify-between items-baseline mb-1';
+
+            const sender = document.createElement('span');
+            sender.className = `${isRead ? 'font-normal text-gray-700' : 'font-semibold text-gray-900'} truncate pr-2`;
+            sender.textContent = email.fromName || email.from;
+
+            const date = document.createElement('span');
+            date.className = 'text-xs text-gray-400 whitespace-nowrap';
+            date.textContent = formatDate(email.date);
+
+            header.appendChild(sender);
+            header.appendChild(date);
+
+            const subject = document.createElement('div');
+            subject.className = `text-sm ${isRead ? 'font-normal text-gray-600' : 'font-medium text-gray-800'} truncate mb-1`;
+            subject.textContent = email.subject || '(No Subject)';
+
+            const preview = document.createElement('div');
+            preview.className = 'text-xs text-gray-500 truncate';
+            preview.textContent = (email.body || '').substring(0, 100) + '...';
+
+            item.appendChild(header);
+            item.appendChild(subject);
+            item.appendChild(preview);
+            return item;
+        }
+
+        function renderEmailList() {
+            el.emailList.textContent = '';
+            if (currentEmails.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'p-8 text-center text-gray-500 text-sm';
+                empty.textContent = 'No emails found.';
+                el.emailList.appendChild(empty);
+                return;
+            }
+            const fragment = document.createDocumentFragment();
+            currentEmails.forEach(email => fragment.appendChild(makeEmailItem(email)));
+            el.emailList.appendChild(fragment);
+        }
+
+        function selectEmail(id) {
+            selectedEmailId = id;
+            const email = currentEmails.find(e => e.id === id);
+            if (!email) return;
+
+            readIds.add(id);
+            saveReadIds();
+            renderEmailList();
+
+            el.detailSubject.textContent = email.subject || '(No Subject)';
+            el.detailFrom.textContent = email.fromName ? `${email.fromName} <${email.from}>` : email.from;
+            el.detailTo.textContent = email.to;
+            el.detailDate.textContent = new Date(email.date).toLocaleString();
+            el.detailBody.textContent = email.body || '(Empty Body)';
+
+            showEmailDetail();
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const today = new Date();
+            if (date.toDateString() === today.toDateString()) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+
+        // Boot
+        init();
+    </script>
+</body>
+</html>

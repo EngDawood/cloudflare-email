@@ -6,6 +6,10 @@
   "workers_dev": true,
   "preview_urls": false,
 
+  "assets": {
+    "directory": "./assets"
+  },
+
 
   // KV namespace for storing email context (used for /reply)
   "kv_namespaces": [
@@ -15,17 +19,9 @@
     }
   ],
 
-  // Outbound email — lets the worker send replies as admin@engdawood.com
-  "send_email": [
+"routes": [
     {
-      "name": "SEND_EMAIL",
-      "destination_address": "admin@engdawood.com"
-    }
-  ],
-
-  "routes": [
-    {
-      "pattern": "email.engdawood.com ",
+      "pattern": "email.engdawood.com",
       "custom_domain": true
     }
   ]
