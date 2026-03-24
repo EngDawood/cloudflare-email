@@ -1,14 +1,15 @@
 # Cloudflare Email-to-Telegram Worker
 
-A serverless email bridge that forwards incoming emails to a Telegram bot and allows you to reply directly from Telegram. Built with Cloudflare Workers, Cloudflare Email Routing, and the Telegram Bot API.
+A serverless email bridge that forwards incoming emails to a Telegram bot, allows you to reply/forward/compose directly from Telegram, and includes a web dashboard at `/dashboard`. Built with Cloudflare Workers, Cloudflare Email Routing, Resend, and the Telegram Bot API.
 
 ## Features
 
 - **Inbound Forwarding**: Receive emails at your custom domain and get instant Telegram notifications.
 - **Attachment Support**: Automatically forwards email attachments to your Telegram chat.
-- **Telegram Replies**: Reply to forwarded emails using a simple /reply command in Telegram.
-- **Serverless**: Runs on Cloudflare Workers for global low-latency and zero infrastructure management.
-- **Secure**: Uses Cloudflare KV for storing email context and secrets for bot authentication.
+- **Telegram Bot**: Reply, forward, and compose new emails directly from Telegram with guided flows and inline buttons.
+- **Web Dashboard**: Password-protected inbox at `email.yourdomain.com/dashboard` — read, delete, reply, and compose emails from a browser.
+- **Outbound via Resend**: Sends email through Resend for reliable delivery to any address.
+- **Serverless**: Runs on Cloudflare Workers — zero infrastructure management.
 
 ## Architecture
 
@@ -21,20 +22,45 @@ graph TD
     Worker -->|Notify| TelegramAPI[Telegram Bot API]
     TelegramAPI -->|Message| User[Telegram User]
 
-    User -->|/reply command| TelegramAPI
+    User -->|Bot commands & buttons| TelegramAPI
     TelegramAPI -->|Webhook| Worker
     Worker -->|Retrieve Context| KV
-    Worker -->|Build Email| MimeText[mimetext]
-    Worker -->|Send Email| SendEmailBinding[Cloudflare Send Email Binding]
-    SendEmailBinding -->|SMTP| Recipient[Original Sender]
+    Worker -->|Send Email| Resend[Resend API]
+    Resend -->|SMTP| Recipient[Recipient]
+
+    Browser[Browser] -->|HTTPS| Worker
+    Worker -->|Dashboard UI| Browser
+    Worker -->|Dashboard API| Browser
 ```
+
+## Dashboard
+
+The worker serves a built-in web dashboard at `/dashboard` (e.g., `https://email.yourdomain.com/dashboard`).
+
+- Login with the `DASHBOARD_API_KEY` secret
+- Read, delete, reply, and compose emails
+- Mobile-responsive with read/unread tracking
+
+The dashboard API is also available at `/api/*` for custom integrations:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/emails` | List all emails |
+| GET | `/api/emails/:id` | Get a single email |
+| DELETE | `/api/emails/:id` | Delete an email |
+| POST | `/api/emails/send` | Send an email |
+| GET | `/api/settings` | Get settings |
+| POST | `/api/settings` | Update settings |
+
+All API requests require `Authorization: Bearer <DASHBOARD_API_KEY>`.
 
 ## Prerequisites
 
-- A domain managed by Cloudflare.
-- Cloudflare Workers account.
-- A Telegram Bot (created via @BotFather).
-- Your Telegram Chat ID (can be retrieved via @userinfobot).
+- A domain managed by Cloudflare
+- Cloudflare Workers account
+- A Telegram Bot (created via @BotFather)
+- Your Telegram Chat ID (retrieve via @userinfobot)
+- A [Resend](https://resend.com) account with your domain verified
 
 ## Installation and Setup
 
@@ -54,60 +80,57 @@ Create a KV namespace for storing email context:
 npx wrangler kv namespace create EMAIL_STORE
 ```
 
-Update your wrangler.jsonc with the returned id.
+Update `wrangler.jsonc` with the returned namespace ID.
 
-### 3. Set Environment Secrets
-
-Configure your Telegram credentials:
+### 3. Set Secrets
 
 ```bash
 npx wrangler secret put TELEGRAM_BOT_TOKEN
 npx wrangler secret put TELEGRAM_CHAT_ID
+npx wrangler secret put DASHBOARD_API_KEY   # choose a strong password
+npx wrangler secret put RESEND_API_KEY      # from resend.com/api-keys
 ```
 
-### 4. Deploy to Cloudflare
+### 4. Verify Your Sending Domain on Resend
+
+1. Go to [resend.com/domains](https://resend.com/domains) and add your domain.
+2. Add the DNS records Resend provides (SPF, DKIM).
+3. Wait for verification before deploying.
+
+### 5. Deploy to Cloudflare
 
 ```bash
-npx wrangler deploy
+pnpm run deploy
 ```
 
-Take note of your deployed Worker URL (e.g., https://mail.<your-subdomain>.workers.dev).
-
-### 5. Register Telegram Webhook
-
-Link your Telegram bot to your worker:
+### 6. Register Telegram Webhook
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -d "url=https://<your-worker-url>/telegram-webhook"
 ```
 
-### 6. Configure Email Routing
+### 7. Configure Email Routing
 
-1. In the Cloudflare Dashboard, go to Email > Email Routing.
+1. In the Cloudflare Dashboard, go to **Email > Email Routing**.
 2. Enable Email Routing for your domain.
-3. Add a Catch-all rule:
-   - Action: Send to Worker
-   - Worker: Select your mail worker.
-4. (Optional) Add a Verified destination address if you plan to send emails from a specific address.
+3. Add a Catch-all rule: **Send to Worker** → select your mail worker.
 
-## Usage
+## Telegram Bot Commands
 
-### Receiving Emails
-Any email sent to your domain (e.g., hello@yourdomain.com) will be parsed by the worker and forwarded to your Telegram chat. The notification will include the sender, subject, and body snippet.
+| Command | Description |
+|---------|-------------|
+| `/reply <id>` | Reply to an email |
+| `/forward <id>` | Forward an email |
+| `/send` | Compose a new email |
+| `/recent` | Show last 5 emails with reply/forward buttons |
+| `/recent <n>` | Show last N emails (max 10) |
+| `/settings` | Configure auto-forward |
+| `/cancel` | Cancel current draft |
 
-### Replying via Telegram
-To reply to an email, use the /reply command followed by the message ID (provided in the notification) and your message:
-
-```text
-/reply <msg_id> Hello! Thank you for your email. I will get back to you soon.
-```
-
-The worker will look up the original sender\'s details in KV, construct a professional email reply, and send it using Cloudflare\'s send_email binding.
+All send flows show a preview with inline buttons before sending. Attachments can be added via the 📎 button.
 
 ## Development
-
-Run the worker locally for testing:
 
 ```bash
 pnpm dev
@@ -115,9 +138,8 @@ pnpm dev
 
 ## Dependencies
 
-- postal-mime: For parsing complex MIME messages.
-- mimetext: For constructing compliant email messages.
-- wrangler: Cloudflare Workers CLI.
+- **postal-mime** — Parse inbound MIME messages
+- **wrangler** — Cloudflare Workers CLI
 
 ## License
 
