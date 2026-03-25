@@ -10,6 +10,11 @@
     "directory": "./assets"
   },
 
+  // Fallback forward address — email is forwarded here before any other processing
+  "vars": {
+    "FORWARD_EMAIL": ""
+  },
+
 
   // KV namespace for storing email context (used for /reply)
   "kv_namespaces": [
@@ -28,7 +33,7 @@
 ,
 
   "observability": {
-    "enabled": false,
+    "enabled": true,
     "head_sampling_rate": 1,
     "logs": {
       "enabled": true,

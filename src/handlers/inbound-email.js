@@ -5,6 +5,14 @@ import { sendEmail } from "../lib/email.js";
 import { getSettings } from "../lib/settings.js";
 
 export async function handleEmail(message, env) {
+  console.log(JSON.stringify({ event: "email_received", from: message.from, to: message.to }));
+
+  // Forward early via Cloudflare native routing — happens before anything else
+  // so email is never lost even if the rest of the handler throws.
+  if (env.FORWARD_EMAIL) {
+    await message.forward(env.FORWARD_EMAIL).catch(() => {});
+  }
+
   const rawEmail = await streamToArrayBuffer(message.raw, message.rawSize);
   const parsed = await new PostalMime().parse(rawEmail);
 
@@ -29,8 +37,8 @@ export async function handleEmail(message, env) {
     `<i>/reply ${escHtml(id)} &lt;your reply&gt;</i>`,
   ].filter(Boolean).join("\n");
 
-  // KV store, settings fetch, and Telegram notification all run in parallel
-  const [, settings] = await Promise.all([
+  // KV store and settings fetch must succeed; Telegram notification is best-effort
+  const [kvResult, settingsResult, tgResult] = await Promise.allSettled([
     env.EMAIL_STORE.put(
       `email:${id}`,
       JSON.stringify({ id, from, fromName, to: message.to, subject, date,
@@ -40,6 +48,19 @@ export async function handleEmail(message, env) {
     getSettings(env),
     tgSend(token, chatId, tgText),
   ]);
+
+  if (kvResult.status === "rejected") {
+    console.error(JSON.stringify({ event: "email_kv_failed", from: message.from, error: kvResult.reason?.message }));
+    throw kvResult.reason;
+  }
+
+  if (tgResult.status === "rejected") {
+    console.warn(JSON.stringify({ event: "email_tg_failed", from: message.from, error: tgResult.reason?.message }));
+  }
+
+  console.log(JSON.stringify({ event: "email_stored", id, from, subject }));
+
+  const settings = settingsResult.status === "fulfilled" ? settingsResult.value : {};
 
   // Forward attachments to Telegram (parallel)
   await Promise.allSettled(
