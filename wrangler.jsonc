@@ -1,0 +1,66 @@
+{
+    "name": "engdawood-email",
+    "main": "build/index.js",
+    "compatibility_date": "2024-09-23",
+    "compatibility_flags": [
+        "nodejs_compat_v2"
+    ],
+    "workers_dev": true,
+    "preview_urls": false,
+
+    "assets": {
+        "directory": "./assets"
+    },
+
+    "routes": [
+        {
+            "pattern": "email.engdawood.com",
+            "custom_domain": true
+        },
+            {
+            "pattern": "www.email.engdawood.com",
+            "custom_domain": true
+        }
+    ],
+
+    "kv_namespaces": [
+        {
+            "binding": "EMAIL_STORE",
+            "id": "d89b3b1574e64e7fad0bc63f4d147cfc"
+        }
+    ],
+    
+    "ai": {
+        "binding": "AI"
+    },
+
+    "vars": {
+        "DOMAIN": "email.engdawood.com",
+        "FORWARD_EMAIL": "davidhormos@gmail.com",
+        "GUARDIAN_MODE": "false",
+        "MAX_EMAIL_SIZE_POLICY": "truncate",
+        "DEBUG": "false"
+    },
+
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+            "enabled": true,
+            "head_sampling_rate": 1,
+            "persist": true,
+            "invocation_logs": true
+        },
+        "traces": {
+            "enabled": false,
+            "persist": true,
+            "head_sampling_rate": 1
+        }
+    }
+}
+
+        // "WORKERS_AI_MODEL": "@cf/meta/llama-3-8b-instruct",
+        // "OPENAI_API_KEY": "sk-",
+        // "OPENAI_COMPLETIONS_API": "https://openrouter.ai/api/v1/chat/completions",
+        // "OPENAI_CHAT_MODEL": "openai/gpt-4o-mini",
+        // "SUMMARY_TARGET_LANG": "english",
