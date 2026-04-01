@@ -32,11 +32,11 @@ export async function checkAddressStatus(addresses: string[], env: Environment):
         BLOCK_LIST,
         WHITE_LIST,
         DISABLE_LOAD_REGEX_FROM_DB,
-        DB,
+        EMAIL_STORE,
     } = env;
     const blockList = loadArrayFromRaw(BLOCK_LIST);
     const whiteList = loadArrayFromRaw(WHITE_LIST);
-    const dao = new Dao(DB);
+    const dao = new Dao(EMAIL_STORE);
     if (!(DISABLE_LOAD_REGEX_FROM_DB === 'true')) {
         blockList.push(...(await dao.loadArrayFromDB('BLOCK_LIST')));
         whiteList.push(...(await dao.loadArrayFromDB('WHITE_LIST')));

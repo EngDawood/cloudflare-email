@@ -6,19 +6,39 @@ export const tmaModeDescription: { [key: string]: string } = {
 
 export const telegramCommands = [
     {
-        command: 'id',
-        description: '/id - Get your chat ID',
+        command: 'start',
+        description: 'Initialize and show bot info',
     },
     {
-        command: 'test',
-        description: `/test - ${tmaModeDescription.test}`,
+        command: 'send',
+        description: 'Compose a brand new email',
+    },
+    {
+        command: 'reply',
+        description: '/reply <id> - Reply to an email',
+    },
+    {
+        command: 'forward',
+        description: '/forward <id> - Forward an email',
+    },
+    {
+        command: 'inbox',
+        description: 'Browse your stored emails',
     },
     {
         command: 'white',
-        description: `/white - ${tmaModeDescription.white}`,
+        description: 'Manage the white list (TMA)',
     },
     {
         command: 'block',
-        description: `/block - ${tmaModeDescription.block}`,
+        description: 'Manage the block list (TMA)',
+    },
+    {
+        command: 'cancel',
+        description: 'Cancel current draft flow',
+    },
+    {
+        command: 'id',
+        description: 'Get your chat ID',
     },
 ];

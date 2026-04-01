@@ -5,6 +5,7 @@ import { validate } from '@telegram-apps/init-data-node/web';
 import { json, Router } from 'itty-router';
 import { Dao } from '../../db';
 import { createTelegramBotAPI, telegramCommands, telegramWebhookHandler, tmaHTML } from '../../telegram';
+import { registerDashboardRoutes } from './dashboard';
 
 class HTTPError extends Error {
     readonly status: number;
@@ -16,8 +17,8 @@ class HTTPError extends Error {
 
 function createTmaAuthMiddleware(env: Environment): (req: Request) => Promise<void> {
     const {
-        TELEGRAM_TOKEN,
-        TELEGRAM_ID,
+        TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID,
     } = env;
     return async (req: Request): Promise<void> => {
         const [authType, authData = ''] = (req.headers.get('Authorization') || '').split(' ');
@@ -25,11 +26,11 @@ function createTmaAuthMiddleware(env: Environment): (req: Request) => Promise<vo
             throw new HTTPError(401, 'Invalid authorization type');
         }
         try {
-            await validate(authData, TELEGRAM_TOKEN, {
+            await validate(authData, TELEGRAM_BOT_TOKEN, {
                 expiresIn: 3600,
             });
             const user = JSON.parse(new URLSearchParams(authData).get('user') || '{}');
-            for (const id of TELEGRAM_ID.split(',')) {
+            for (const id of TELEGRAM_CHAT_ID.split(',')) {
                 if (id === `${user.id}`) {
                     return;
                 }
@@ -75,26 +76,26 @@ function createRouter(env: Environment): RouterType {
     });
 
     const {
-        TELEGRAM_TOKEN,
+        TELEGRAM_BOT_TOKEN,
         DOMAIN,
-        DB,
+        EMAIL_STORE,
     } = env;
-    const dao = new Dao(DB);
+    const dao = new Dao(EMAIL_STORE);
     const auth = createTmaAuthMiddleware(env);
 
     router.get('/', async (): Promise<Response> => {
         return new Response(null, {
             status: 302,
             headers: {
-                location: 'https://github.com/TBXark/mail2telegram',
+                location: '/dashboard',
             },
         });
     });
 
     router.get('/init', async (): Promise<any> => {
-        const api = createTelegramBotAPI(TELEGRAM_TOKEN);
+        const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
         const webhook = await api.setWebhook({
-            url: `https://${DOMAIN}/telegram/${TELEGRAM_TOKEN}/webhook`,
+            url: `https://${DOMAIN}/telegram/${TELEGRAM_BOT_TOKEN}/webhook`,
         });
         const commands = await api.setMyCommands({
             commands: telegramCommands,
@@ -114,6 +115,9 @@ function createRouter(env: Environment): RouterType {
             },
         });
     });
+
+    // Register Web Dashboard APIs
+    registerDashboardRoutes(router, env, auth);
 
     router.post('/api/address/add', auth, async (req: IRequest): Promise<any> => {
         const { address, type } = await req.json() as { address: string; type: AddressType };
@@ -138,7 +142,7 @@ function createRouter(env: Environment): RouterType {
     /// Webhook
 
     router.post('/telegram/:token/webhook', async (req: IRequest): Promise<any> => {
-        if (req.params.token !== TELEGRAM_TOKEN) {
+        if (req.params.token !== TELEGRAM_BOT_TOKEN) {
             throw new HTTPError(403, 'Invalid token');
         }
         try {
@@ -166,18 +170,24 @@ function createRouter(env: Environment): RouterType {
         });
     });
 
-    router.all('*', async () => {
-        throw new HTTPError(404, 'Not found');
-    });
-
     return router;
 }
 
 export async function fetchHandler(request: Request, env: Environment): Promise<Response> {
+    const url = new URL(request.url);
+
     const router = createRouter(env);
-    return router.fetch(request).catch((e) => {
-        return new Response(JSON.stringify({
-            error: e.message,
-        }), { status: 500 });
-    });
+    const response = await router.fetch(request);
+
+    // If the router handled it (API, Webhook, etc.), return that response
+    if (response) return response;
+
+    // Otherwise, redirect root to dashboard
+    if (url.pathname === '/' || url.pathname === '') {
+        return Response.redirect(new URL('/dashboard', request.url).href, 302);
+    }
+
+    // For everything else (dashboard.html, js, css), let it fall through.
+    // In Cloudflare Assets, if we return a non-handled response, it serves the asset.
+    return new Response('Not Found', { status: 404 });
 }

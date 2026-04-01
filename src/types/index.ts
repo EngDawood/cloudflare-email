@@ -9,10 +9,13 @@ export interface EmailCache {
     id: string;
     messageId: string;
     from: string;
+    fromName?: string;
     to: string;
     subject: string;
+    date?: string;
     html?: string;
     text?: string;
+    body?: string;
 }
 
 export type MaxEmailSizePolicy = 'unhandled' | 'continue' | 'truncate';
@@ -20,9 +23,9 @@ export type MaxEmailSizePolicy = 'unhandled' | 'continue' | 'truncate';
 export type BlockPolicy = 'reject' | 'forward' | 'telegram';
 
 export interface Environment {
-    TELEGRAM_TOKEN: string;
-    TELEGRAM_ID: string;
-    FORWARD_LIST: string;
+    TELEGRAM_BOT_TOKEN: string;
+    TELEGRAM_CHAT_ID: string;
+    FORWARD_EMAIL: string;
     BLOCK_LIST: string;
     WHITE_LIST: string;
     DISABLE_LOAD_REGEX_FROM_DB: string;
@@ -38,7 +41,9 @@ export interface Environment {
     SUMMARY_TARGET_LANG?: string;
     GUARDIAN_MODE?: string;
     RESEND_API_KEY?: string;
-    DB: KVNamespace;
+    DASHBOARD_API_KEY?: string;
+    EMAIL_STORE: KVNamespace;
     AI?: Ai;
+    ASSETS: { fetch: (request: Request) => Promise<Response> };
     DEBUG?: string;
 }

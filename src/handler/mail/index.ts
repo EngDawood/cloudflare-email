@@ -6,13 +6,13 @@ import { createTelegramBotAPI } from '../../telegram';
 
 export async function sendMailToTelegram(mail: EmailCache, env: Environment): Promise<number[]> {
     const {
-        TELEGRAM_TOKEN,
-        TELEGRAM_ID,
+        TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID,
     } = env;
     const req = await renderEmailListMode(mail, env);
-    const api = createTelegramBotAPI(TELEGRAM_TOKEN);
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
     const messageID: number[] = [];
-    for (const id of TELEGRAM_ID.split(',')) {
+    for (const id of TELEGRAM_CHAT_ID.split(',')) {
         const msg = await api.sendMessageWithReturns({
             chat_id: id,
             ...req,
@@ -24,16 +24,18 @@ export async function sendMailToTelegram(mail: EmailCache, env: Environment): Pr
 
 export async function emailHandler(message: ForwardableEmailMessage, env: Environment): Promise<void> {
     const {
-        FORWARD_LIST,
+        FORWARD_EMAIL,
         BLOCK_POLICY,
         GUARDIAN_MODE,
-        DB,
+        EMAIL_STORE,
         MAIL_TTL,
         MAX_EMAIL_SIZE,
         MAX_EMAIL_SIZE_POLICY,
+        TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID,
     } = env;
 
-    const dao = new Dao(DB);
+    const dao = new Dao(EMAIL_STORE);
     const id = message.headers.get('Message-ID') || '';
     const isBlock = await isMessageBlock(message, env);
     const isGuardian = GUARDIAN_MODE === 'true';
@@ -50,7 +52,7 @@ export async function emailHandler(message: ForwardableEmailMessage, env: Enviro
     // Forward to email
     try {
         const blockForward = isBlock && blockPolicy.includes('forward');
-        const forwardList = blockForward ? [] : (FORWARD_LIST || '').split(',');
+        const forwardList = blockForward ? [] : (FORWARD_EMAIL || '').split(',');
         for (const forward of forwardList) {
             try {
                 const add = forward.trim();
@@ -74,14 +76,34 @@ export async function emailHandler(message: ForwardableEmailMessage, env: Enviro
     try {
         const blockTelegram = isBlock && blockPolicy.includes('telegram');
         if (!status.telegram && !blockTelegram) {
-            const ttl = Number.parseInt(MAIL_TTL, 10) || 60 * 60 * 24;
+            const ttl = Number.parseInt(MAIL_TTL, 10) || 60 * 60 * 24 * 30; // Default 30 days
             const maxSize = Number.parseInt(MAX_EMAIL_SIZE || '', 10) || 512 * 1024;
             const maxSizePolicy = MAX_EMAIL_SIZE_POLICY || 'truncate';
-            const mail = await parseEmail(message, maxSize, maxSizePolicy);
+            const { cache: mail, attachments } = await parseEmail(message, maxSize, maxSizePolicy);
             await dao.saveMailCache(mail.id, mail, ttl);
             const msgIDs = await sendMailToTelegram(mail, env);
             for (const msgID of msgIDs) {
                 await dao.saveTelegramIDToMailID(`${msgID}`, mail.id, ttl);
+            }
+
+            // Forward attachments to Telegram
+            if (attachments && attachments.length > 0) {
+                const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+                for (const att of attachments) {
+                    if (att.content) {
+                        for (const id of TELEGRAM_CHAT_ID.split(',')) {
+                            try {
+                                await api.sendDocument({
+                                    chat_id: id,
+                                    document: new File([att.content], att.filename || 'attachment', { type: att.mimeType || 'application/octet-stream' }),
+                                    caption: `📎 Attachment from email #${mail.id}: ${att.filename || 'file'}`,
+                                });
+                            } catch (err) {
+                                console.error('Failed to send attachment:', err);
+                            }
+                        }
+                    }
+                }
             }
         }
         if (isGuardian) {

@@ -5,9 +5,44 @@ import { Dao } from '../db';
 import { renderEmailDebugMode, renderEmailListMode, renderEmailPreviewMode, renderEmailSummaryMode, replyToEmail } from '../mail';
 import { createTelegramBotAPI } from './api';
 import { tmaModeDescription } from './const';
+import { handleFlow, handleFlowCallback } from './flow';
 
 type TelegramMessageHandler = (message: Telegram.Message) => Promise<Response>;
 type CommandHandlerGroup = Record<string, TelegramMessageHandler>;
+
+function handleStartCommand(env: Environment): TelegramMessageHandler {
+    return async (msg: Telegram.Message): Promise<Response> => {
+        const { TELEGRAM_BOT_TOKEN, DOMAIN } = env;
+        const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+        
+        // Auto-initialize webhook and commands on /start
+        try {
+            await api.setWebhook({
+                url: `https://${DOMAIN}/telegram/${TELEGRAM_BOT_TOKEN}/webhook`,
+            });
+            await api.setMyCommands({
+                commands: telegramCommands,
+            });
+        } catch (e) {
+            console.error('Auto-init failed:', e);
+        }
+
+        const text = `✨ <b>Bot Initialized</b>\n\nYour chat ID is <code>${msg.chat.id}</code>\n\n<b>Available Commands:</b>\n/send - Compose email\n/inbox - View history\n/white - Whitelist manager\n/block - Blocklist manager\n\n<i>Settings have been synchronized with Telegram.</i>`;
+        
+        const params: Telegram.SendMessageParams = {
+            chat_id: msg.chat.id,
+            text: text,
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{
+                    text: '📬 Open Dashboard',
+                    web_app: { url: `https://${DOMAIN}/dashboard` }
+                }]]
+            }
+        };
+        return await api.sendMessage(params);
+    };
+}
 
 function handleIDCommand(env: Environment): TelegramMessageHandler {
     return async (msg: Telegram.Message): Promise<Response> => {
@@ -19,7 +54,7 @@ function handleIDCommand(env: Environment): TelegramMessageHandler {
 function handleOpenTMACommand(mode: string, text: string | null, env: Environment): TelegramMessageHandler {
     return async (msg: Telegram.Message): Promise<Response> => {
         const {
-            TELEGRAM_TOKEN,
+            TELEGRAM_BOT_TOKEN,
             DOMAIN,
         } = env;
         const params: Telegram.SendMessageParams = {
@@ -42,18 +77,18 @@ function handleOpenTMACommand(mode: string, text: string | null, env: Environmen
             };
         }
 
-        return await createTelegramBotAPI(TELEGRAM_TOKEN).sendMessage(params);
+        return await createTelegramBotAPI(TELEGRAM_BOT_TOKEN).sendMessage(params);
     };
 }
 
 async function handleReplyEmailCommand(message: Telegram.Message, env: Environment): Promise<void> {
     const {
-        TELEGRAM_TOKEN,
+        TELEGRAM_BOT_TOKEN,
         RESEND_API_KEY,
-        DB,
+        EMAIL_STORE,
     } = env;
-    const dao = new Dao(DB);
-    const api = createTelegramBotAPI(TELEGRAM_TOKEN);
+    const dao = new Dao(EMAIL_STORE);
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
     const reply = async (text: string) => {
         await api.sendMessage({
             chat_id: message.chat.id,
@@ -99,9 +134,15 @@ async function telegramCommandHandler(message: Telegram.Message, env: Environmen
         await handleReplyEmailCommand(message, env);
         return;
     }
+
+    // Check flow commands (send, forward, active drafts)
+    const handled = await handleFlow(message, env);
+    if (handled)
+        return;
+
     let [command] = message.text?.split(/ (.*)/) || [''];
     if (!command.startsWith('/')) {
-        console.log(`Invalid command: ${command}`);
+        console.log(`Invalid command or just text: ${message.text}`);
         return;
     }
     command = command.substring(1);
@@ -123,16 +164,21 @@ async function telegramCommandHandler(message: Telegram.Message, env: Environmen
 
 async function telegramCallbackHandler(callback: Telegram.CallbackQuery, env: Environment): Promise<void> {
     const {
-        TELEGRAM_TOKEN,
-        DB,
+        TELEGRAM_BOT_TOKEN,
+        EMAIL_STORE,
     } = env;
+
+    // Check flow callbacks (cancel, confirm_send)
+    const handled = await handleFlowCallback(callback, env);
+    if (handled)
+        return;
 
     const data = callback.data;
     const callbackId = callback.id;
     const chatId = callback.message?.chat?.id;
     const messageId = callback.message?.message_id;
-    const api = createTelegramBotAPI(TELEGRAM_TOKEN);
-    const dao = new Dao(DB);
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+    const dao = new Dao(EMAIL_STORE);
 
     if (!data || !chatId || !messageId) {
         return;
@@ -150,6 +196,7 @@ async function telegramCallbackHandler(callback: Telegram.CallbackQuery, env: En
                 chat_id: chatId,
                 message_id: messageId,
                 ...req,
+                parse_mode: 'HTML', // Ensure HTML parsing is allowed for the updated full experience
             };
             await api.editMessageText(params);
         };

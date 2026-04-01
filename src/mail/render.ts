@@ -19,41 +19,49 @@ export async function renderEmailListMode(mail: EmailCache, env: Environment): P
         AI,
         DOMAIN,
     } = env;
-    const text = `${mail.subject}\n\n-----------\nFrom\t:\t${mail.from}\nTo\t\t:\t${mail.to}`;
+
+    // Truncate the body for the preview
+    const bodyPreview = (mail.body || mail.text || '').substring(0, 300);
+    const fromName = mail.fromName ? `${mail.fromName} <${mail.from}>` : mail.from;
+
+    const text = `📨 <b>New Email</b>\n\n<b>From:</b> ${fromName}\n<b>To:</b> ${mail.to}\n<b>Subject:</b> ${mail.subject}\n\n<code>────────────────────────────</code>\n${bodyPreview}...\n<code>────────────────────────────</code>\n\n<i>Swipe this message to reply directly!</i>`;
+
     const keyboard: Telegram.InlineKeyboardButton[] = [
         {
-            text: 'Preview',
-            callback_data: `p:${mail.id}`,
+            text: '📬 Dashboard',
+            url: `https://${DOMAIN}/dashboard#${mail.id}`,
         },
     ];
+
+    const row2: Telegram.InlineKeyboardButton[] = [];
     if ((AI && WORKERS_AI_MODEL) || OPENAI_API_KEY) {
-        keyboard.push({
-            text: 'Summary',
+        row2.push({
+            text: '✨ AI Summary',
             callback_data: `s:${mail.id}`,
         });
     }
-    if (mail.text) {
-        keyboard.push({
-            text: 'Text',
-            url: `https://${DOMAIN}/email/${mail.id}?mode=text`,
-        });
-    }
     if (mail.html) {
-        keyboard.push({
-            text: 'HTML',
+        row2.push({
+            text: '🌐 HTML',
             url: `https://${DOMAIN}/email/${mail.id}?mode=html`,
         });
     }
+
+    const inline_keyboard = [keyboard];
+    if (row2.length > 0)
+        inline_keyboard.push(row2);
+
     if (DEBUG === 'true') {
-        keyboard.push({
+        inline_keyboard.push([{
             text: 'Debug',
             callback_data: `d:${mail.id}`,
-        });
+        }]);
     }
+
     return {
         text,
         reply_markup: {
-            inline_keyboard: [keyboard],
+            inline_keyboard,
         },
         link_preview_options: {
             is_disabled: true,

@@ -27,7 +27,7 @@ function truncateStream(stream: ReadableStream<Uint8Array>, maxBytes: number): R
     return stream.pipeThrough(tran);
 }
 
-export async function parseEmail(message: ForwardableEmailMessage, maxSize: number, maxSizePolicy: MaxEmailSizePolicy, useEmlHeaders: boolean = false): Promise<EmailCache> {
+export async function parseEmail(message: ForwardableEmailMessage, maxSize: number, maxSizePolicy: MaxEmailSizePolicy, useEmlHeaders: boolean = false): Promise<{ cache: EmailCache; attachments: any[] }> {
     const id = crypto.randomUUID();
     const cache: EmailCache = {
         id,
@@ -35,15 +35,18 @@ export async function parseEmail(message: ForwardableEmailMessage, maxSize: numb
         from: message.from,
         to: message.to,
         subject: message.headers.get('Subject') || '',
+        date: new Date().toISOString(),
     };
     let isTruncate = false;
     let emailRaw = message.raw;
+    let attachments: any[] = [];
     try {
         switch (message.rawSize > maxSize ? maxSizePolicy : 'continue') {
             case 'unhandled':
                 cache.text = `The original size of the email was ${message.rawSize} bytes, which exceeds the maximum size of ${maxSize} bytes.`;
                 cache.html = cache.text;
-                return cache;
+                cache.body = cache.text;
+                return { cache, attachments };
             case 'truncate':
                 isTruncate = true;
                 emailRaw = truncateStream(message.raw, maxSize);
@@ -59,6 +62,8 @@ export async function parseEmail(message: ForwardableEmailMessage, maxSize: numb
             cache.from = email.from?.address || cache.from;
             cache.to = email.to?.map(addr => addr.address).at(0) || cache.to;
         }
+        cache.fromName = email.from?.name || undefined;
+        cache.date = email.date || cache.date;
         cache.html = email.html;
         cache.text = email.text;
         if (cache.html && !cache.text) {
@@ -67,10 +72,13 @@ export async function parseEmail(message: ForwardableEmailMessage, maxSize: numb
         if (isTruncate) {
             cache.text += `\n\n[Truncated] The original size of the email was ${message.rawSize} bytes, which exceeds the maximum size of ${maxSize} bytes.`;
         }
+        cache.body = cache.text?.slice(0, 2000) || '(empty body)';
+        attachments = email.attachments || [];
     } catch (e) {
         const msg = `Error parsing email: ${(e as Error).message}`;
         cache.text = msg;
         cache.html = msg;
+        cache.body = msg;
     }
-    return cache;
+    return { cache, attachments };
 }
