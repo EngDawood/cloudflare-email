@@ -173,3 +173,6 @@ docs/*
 CLAUDE.md
 .mcp.json
 .gemini/settings.json
+.gemini/*
+reports/*
+docs/*

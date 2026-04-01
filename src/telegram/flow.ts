@@ -8,7 +8,7 @@ import { clearDraft, getDraft, saveDraft } from './draft';
 export async function handleFlow(message: Telegram.Message, env: Environment): Promise<boolean> {
     const chatId = message.chat.id;
     const text = message.text?.trim() || '';
-    const token = env.TELEGRAM_TOKEN;
+    const token = env.TELEGRAM_BOT_TOKEN;
     const api = createTelegramBotAPI(token);
     const draft = await getDraft(env, chatId);
 
@@ -46,7 +46,7 @@ export async function handleFlow(message: Telegram.Message, env: Environment): P
             await api.sendMessage({ chat_id: chatId, text: '❌ Usage: /forward <id>' });
             return true;
         }
-        const dao = new Dao(env.DB);
+        const dao = new Dao(env.EMAIL_STORE);
         const email = await dao.loadMailCache(id);
         if (!email) {
             await api.sendMessage({ chat_id: chatId, text: `❌ No email found with ID: <code>${id}</code>`, parse_mode: 'HTML' });
