@@ -1,0 +1,58 @@
+{
+    "name": "cloudflare-email-bridge",
+    "main": "build/index.js",
+    "compatibility_date": "2024-09-23",
+    "compatibility_flags": [
+        "nodejs_compat_v2"
+    ],
+    "workers_dev": true,
+    "preview_urls": false,
+
+    "assets": {
+        "directory": "./assets"
+    },
+
+    "routes": [
+        {
+            "pattern": "email.example.com",
+            "custom_domain": true
+        }
+    ],
+
+    "kv_namespaces": [
+        {
+            "binding": "EMAIL_STORE",
+            "id": "YOUR_KV_NAMESPACE_ID"
+        }
+    ],
+    
+    "ai": {
+        "binding": "AI"
+    },
+
+    "vars": {
+        "DOMAIN": "email.example.com",
+        "FORWARD_EMAIL": "backup@example.com",
+        "GUARDIAN_MODE": "false",
+        "MAX_EMAIL_SIZE_POLICY": "truncate",
+        "DEBUG": "false"
+        
+        // --- AI Summarization Options (Uncomment to enable) ---
+        // "WORKERS_AI_MODEL": "@cf/meta/llama-3-8b-instruct",
+        // "OPENAI_API_KEY": "sk-your-openai-api-key",
+        // "OPENAI_COMPLETIONS_API": "https://api.openai.com/v1/chat/completions",
+        // "OPENAI_CHAT_MODEL": "gpt-4o-mini",
+        // "SUMMARY_TARGET_LANG": "english"
+    },
+
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+            "enabled": true,
+            "head_sampling_rate": 1,
+            "persist": true,
+            "invocation_logs": true
+        }
+    }
+}

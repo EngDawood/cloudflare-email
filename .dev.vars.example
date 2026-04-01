@@ -1,0 +1,14 @@
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN="1234567890:YOUR_TELEGRAM_BOT_TOKEN_HERE"
+TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID_HERE"
+
+# Dashboard Security
+# Optional: Only needed if you want a static API key fallback instead of TMA Auth
+# DASHBOARD_API_KEY="your-super-secret-dashboard-key"
+
+# Outbound Email (Resend)
+RESEND_API_KEY="re_your_resend_api_key_here"
+
+# AI Summarization (OpenAI)
+# Optional: Only needed if using OpenAI instead of Cloudflare Workers AI
+# OPENAI_API_KEY="sk-your-openai-api-key-here"

@@ -55,6 +55,8 @@ graph TD
 1. **Clone & Install**
    ```bash
    pnpm install
+   cp wrangler.example.jsonc wrangler.jsonc
+   cp .dev.vars.example .dev.vars
    ```
 
 2. **Database Setup**
