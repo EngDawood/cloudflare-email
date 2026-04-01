@@ -143,5 +143,10 @@ The Dashboard API is available for custom integrations. All requests must includ
 
 ---
 
+## Acknowledgments
+This project is heavily inspired by and based upon the excellent work from [TBXark/mail2telegram](https://github.com/tbxark/mail2telegram).
+
+---
+
 ## License
 Released under the [MIT License](LICENSE).
