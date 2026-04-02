@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mail — Eng. Dawood</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/dashboard.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<div id="app">
+
+    <!-- Header -->
+    <header id="appHeader">
+        <div class="brand">Mail<em>.</em></div>
+        <span id="hdrCount" class="hdr-count hidden"></span>
+        <div class="theme-picker-wrap">
+            <button id="themeBtn" class="icon-btn" title="Change theme">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z"/>
+                    <circle cx="6.5" cy="11.5" r="1.25" fill="currentColor" stroke="none"/>
+                    <circle cx="9.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/>
+                    <circle cx="14.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/>
+                    <circle cx="17.5" cy="11.5" r="1.25" fill="currentColor" stroke="none"/>
+                </svg>
+            </button>
+            <div id="themePicker" class="hidden"></div>
+        </div>
+        <button id="refreshBtn" class="icon-btn" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+                <path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/>
+            </svg>
+        </button>
+        <button id="logoutBtn" class="hidden">Log out</button>
+    </header>
+
+    <!-- ── Dashboard View ─────────────────────────── -->
+    <div id="dashboardView" class="hidden">
+
+        <!-- Sidebar -->
+        <div id="emailSidebar">
+            <div class="sidebar-hdr">
+                <span class="sidebar-hdr-title">Inbox</span>
+            </div>
+            <div id="emailList"></div>
+        </div>
+
+        <!-- Main -->
+        <div id="emailMain">
+
+            <!-- Empty state -->
+            <div id="emptyState">
+                <div class="empty-serif">No message</div>
+                <div class="empty-label">Select an email or compose a new one</div>
+            </div>
+
+            <!-- Email detail -->
+            <div id="emailDetailView" class="hidden">
+                <div class="detail-head">
+                    <div class="detail-head-top">
+                        <button id="backBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <h2 id="detailSubject"></h2>
+                    </div>
+                    <div class="detail-meta">
+                        <div class="detail-meta-row">
+                            <span class="meta-key">From</span>
+                            <span id="detailFrom" class="meta-val"></span>
+                            <span id="detailDate" class="meta-date-val"></span>
+                        </div>
+                        <div class="detail-meta-row">
+                            <span class="meta-key">To</span>
+                            <span id="detailTo" class="meta-val"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="detail-body-scroll">
+                    <div id="detailBody"></div>
+                </div>
+                <div class="detail-foot">
+                    <button id="replyBtn" class="btn-reply">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/>
+                        </svg>
+                        Reply
+                    </button>
+                    <button id="deleteBtn" class="btn-delete" title="Delete">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                        </svg>
+                    </button>
+                    <div id="deleteConfirm" class="hidden">
+                        <span class="del-confirm-text">Delete this email?</span>
+                        <button id="deleteConfirmYes" class="btn-del-yes">Yes</button>
+                        <button id="deleteConfirmNo" class="btn-del-no">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compose overlay -->
+            <div id="composeView" class="hidden">
+                <div class="compose-head">
+                    <span id="composeTitle">New Message</span>
+                    <button id="closeComposeBtn" class="icon-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+                <form id="composeForm">
+                    <input type="hidden" id="composeInReplyTo">
+                    <div class="compose-fields">
+                        <div class="compose-row">
+                            <span class="compose-key">To</span>
+                            <input type="email" id="composeTo" required placeholder="recipient@example.com">
+                        </div>
+                        <div class="compose-row">
+                            <span class="compose-key">Subject</span>
+                            <input type="text" id="composeSubject" required placeholder="Enter subject">
+                        </div>
+                    </div>
+                    <div class="compose-body-wrap">
+                        <textarea id="composeBody" required placeholder="Write your message..."></textarea>
+                    </div>
+                    <div class="compose-foot">
+                        <div id="composeStatus"></div>
+                        <button type="submit" class="btn-send">
+                            Send
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"/>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- FAB -->
+            <button id="fabCompose" title="Compose">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+            </button>
+
+        </div>
+    </div>
+</div>
+
+<script src="/dashboard.js"></script>
+</body>
+</html>
