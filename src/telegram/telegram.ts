@@ -4,7 +4,7 @@ import type { Environment } from '../types';
 import { Dao } from '../db';
 import { renderEmailDebugMode, renderEmailListMode, renderEmailPreviewMode, renderEmailSummaryMode, replyToEmail } from '../mail';
 import { createTelegramBotAPI } from './api';
-import { tmaModeDescription } from './const';
+import { telegramCommands, tmaModeDescription } from './const';
 import { handleFlow, handleFlowCallback } from './flow';
 
 type TelegramMessageHandler = (message: Telegram.Message) => Promise<Response>;
@@ -27,7 +27,7 @@ function handleStartCommand(env: Environment): TelegramMessageHandler {
             console.error('Auto-init failed:', e);
         }
 
-        const text = `✨ <b>Bot Initialized</b>\n\nYour chat ID is <code>${msg.chat.id}</code>\n\n<b>Available Commands:</b>\n/send - Compose email\n/inbox - View history\n/white - Whitelist manager\n/block - Blocklist manager\n\n<i>Settings have been synchronized with Telegram.</i>`;
+        const text = `✨ <b>Bot Initialized</b>\n\nYour chat ID is <code>${msg.chat.id}</code>\n\n<b>Available Commands:</b>\n/send - Compose email\n/inbox - View history\n/reply - Reply to email\n/forward - Forward email\n/cancel - Cancel drafts\n/white - Whitelist manager\n/block - Blocklist manager\n\n<i>Settings have been synchronized with Telegram.</i>`;
         
         const params: Telegram.SendMessageParams = {
             chat_id: msg.chat.id,
@@ -81,6 +81,35 @@ function handleOpenTMACommand(mode: string, text: string | null, env: Environmen
     };
 }
 
+function handleInboxCommand(env: Environment): TelegramMessageHandler {
+    return async (msg: Telegram.Message): Promise<Response> => {
+        const { TELEGRAM_BOT_TOKEN, DOMAIN } = env;
+        const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+        const params: Telegram.SendMessageParams = {
+            chat_id: msg.chat.id,
+            text: '📬 <b>Open Inbox Dashboard</b>',
+            parse_mode: 'HTML',
+        };
+
+        if (msg.chat.type === 'private') {
+            params.reply_markup = {
+                inline_keyboard: [
+                    [
+                        {
+                            text: 'Open Inbox',
+                            web_app: {
+                                url: `https://${DOMAIN}/dashboard`,
+                            },
+                        },
+                    ],
+                ],
+            };
+        }
+
+        return await api.sendMessage(params);
+    };
+}
+
 async function handleReplyEmailCommand(message: Telegram.Message, env: Environment): Promise<void> {
     const {
         TELEGRAM_BOT_TOKEN,
@@ -129,6 +158,44 @@ async function handleReplyEmailCommand(message: Telegram.Message, env: Environme
     }
 }
 
+function handleReplyCommandText(env: Environment): TelegramMessageHandler {
+    return async (msg: Telegram.Message): Promise<Response> => {
+        const { TELEGRAM_BOT_TOKEN, RESEND_API_KEY, EMAIL_STORE } = env;
+        const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+        const reply = async (text: string) => {
+            await api.sendMessage({ chat_id: msg.chat.id, text });
+        };
+        if (!RESEND_API_KEY) {
+            await reply('Resend API is not enabled.');
+            return new Response('OK');
+        }
+
+        const match = msg.text?.match(/^\/reply\s+(\S+)\s+([\s\S]+)$/i);
+        if (!match) {
+            await reply('❌ Usage: /reply <email_id> <message>');
+            return new Response('OK');
+        }
+
+        const mailID = match[1];
+        const bodyText = match[2];
+
+        const dao = new Dao(EMAIL_STORE);
+        const mail = await dao.loadMailCache(mailID);
+        if (!mail) {
+            await reply(`❌ No email found with ID: ${mailID}`);
+            return new Response('OK');
+        }
+
+        try {
+            await replyToEmail(RESEND_API_KEY, mail, bodyText);
+            await reply(`✅ Reply sent successfully to ${mail.fromName || mail.from}`);
+        } catch (e) {
+            await reply(`❌ Failed to send reply: ${(e as Error).message}`);
+        }
+        return new Response('OK');
+    };
+}
+
 async function telegramCommandHandler(message: Telegram.Message, env: Environment): Promise<void> {
     if (message?.reply_to_message) {
         await handleReplyEmailCommand(message, env);
@@ -145,10 +212,12 @@ async function telegramCommandHandler(message: Telegram.Message, env: Environmen
         console.log(`Invalid command or just text: ${message.text}`);
         return;
     }
-    command = command.substring(1);
+    command = command.substring(1).split(/\s+/)[0].toLowerCase();
     const handlers: CommandHandlerGroup = {
         id: handleIDCommand(env),
-        start: handleIDCommand(env),
+        start: handleStartCommand(env),
+        inbox: handleInboxCommand(env),
+        reply: handleReplyCommandText(env),
         test: handleOpenTMACommand('test', null, env),
         white: handleOpenTMACommand('white', null, env),
         block: handleOpenTMACommand('block', null, env),

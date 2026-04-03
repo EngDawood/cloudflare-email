@@ -7,6 +7,11 @@ export interface EmailDetailParams {
     text: string;
     reply_markup: Telegram.InlineKeyboardMarkup;
     link_preview_options: Telegram.LinkPreviewOptions;
+    parse_mode?: 'HTML' | 'MarkdownV2' | 'Markdown';
+}
+
+function escapeHTML(str: string): string {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export type EmailRender = (mail: EmailCache, env: Environment) => Promise<EmailDetailParams>;
@@ -21,10 +26,12 @@ export async function renderEmailListMode(mail: EmailCache, env: Environment): P
     } = env;
 
     // Truncate the body for the preview
-    const bodyPreview = (mail.body || mail.text || '').substring(0, 300);
-    const fromName = mail.fromName ? `${mail.fromName} <${mail.from}>` : mail.from;
+    const bodyPreview = escapeHTML((mail.body || mail.text || '').substring(0, 300));
+    const fromName = escapeHTML(mail.fromName ? `${mail.fromName} <${mail.from}>` : mail.from);
+    const to = escapeHTML(mail.to);
+    const subject = escapeHTML(mail.subject);
 
-    const text = `📨 <b>New Email</b>\n\n<b>From:</b> ${fromName}\n<b>To:</b> ${mail.to}\n<b>Subject:</b> ${mail.subject}\n\n<code>────────────────────────────</code>\n${bodyPreview}...\n<code>────────────────────────────</code>\n\n<i>Swipe this message to reply directly!</i>`;
+    const text = `📨 <b>New Email</b>\n\n<b>From:</b> ${fromName}\n<b>To:</b> ${to}\n<b>Subject:</b> ${subject}\n\n<code>────────────────────────────</code>\n${bodyPreview}...\n<code>────────────────────────────</code>\n\n<i>Swipe this message to reply directly!</i>`;
 
     const keyboard: Telegram.InlineKeyboardButton[] = [
         {
@@ -66,6 +73,7 @@ export async function renderEmailListMode(mail: EmailCache, env: Environment): P
         link_preview_options: {
             is_disabled: true,
         },
+        parse_mode: 'HTML',
     };
 }
 
