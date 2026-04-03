@@ -104,15 +104,16 @@ const saveReadIds = () => localStorage.setItem('DASHBOARD_READ_IDS', JSON.string
 
 // ── View Management ───────────────────────────────────────────────────────────
 function showLogin() {
-    el.loginView.classList.remove('hidden');
+    if (el.loginView) el.loginView.classList.remove('hidden');
     el.dashboardView.classList.add('hidden');
-    el.logoutBtn.classList.add('hidden');
+    if (el.logoutBtn) el.logoutBtn.classList.add('hidden');
 }
 
 function showDashboard() {
-    el.loginView.classList.add('hidden');
+    if (el.loginView) el.loginView.classList.add('hidden');
     el.dashboardView.classList.remove('hidden');
-    el.logoutBtn.classList.remove('hidden');
+    if (el.logoutBtn) el.logoutBtn.classList.remove('hidden');
+    if (isMobile()) showSidebar();
 }
 
 function showEmailDetail() {
@@ -382,7 +383,18 @@ function selectEmail(id) {
     el.detailFrom.textContent = email.fromName ? `${email.fromName} <${email.from}>` : email.from;
     el.detailTo.textContent = email.to;
     el.detailDate.textContent = new Date(email.date).toLocaleString();
-    el.detailBody.textContent = email.body || '(Empty)';
+    if (email.html) {
+        el.detailBody.textContent = '';
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.minHeight = '600px';
+        iframe.style.border = 'none';
+        iframe.srcdoc = email.html;
+        el.detailBody.appendChild(iframe);
+    } else {
+        el.detailBody.textContent = email.text || email.body || '(Empty)';
+    }
 
     showEmailDetail();
 }

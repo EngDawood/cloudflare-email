@@ -830,7 +830,7 @@ var tmaModeDescription = {
   white: "Manage the white list",
   block: "Manage the block list"
 };
-var telegramCommands2 = [
+var telegramCommands = [
   {
     command: "start",
     description: "Initialize and show bot info"
@@ -9847,6 +9847,9 @@ async function summarizedByOpenAI(key, endpoint, model, prompt) {
 }
 
 // src/mail/render.ts
+function escapeHTML(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 async function renderEmailListMode(mail, env) {
   const {
     DEBUG,
@@ -9855,13 +9858,15 @@ async function renderEmailListMode(mail, env) {
     AI,
     DOMAIN
   } = env;
-  const bodyPreview = (mail.body || mail.text || "").substring(0, 300);
-  const fromName = mail.fromName ? `${mail.fromName} <${mail.from}>` : mail.from;
+  const bodyPreview = escapeHTML((mail.body || mail.text || "").substring(0, 300));
+  const fromName = escapeHTML(mail.fromName ? `${mail.fromName} <${mail.from}>` : mail.from);
+  const to = escapeHTML(mail.to);
+  const subject = escapeHTML(mail.subject);
   const text = `\u{1F4E8} <b>New Email</b>
 
 <b>From:</b> ${fromName}
-<b>To:</b> ${mail.to}
-<b>Subject:</b> ${mail.subject}
+<b>To:</b> ${to}
+<b>Subject:</b> ${subject}
 
 <code>\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500</code>
 ${bodyPreview}...
@@ -9903,7 +9908,8 @@ ${bodyPreview}...
     },
     link_preview_options: {
       is_disabled: true
-    }
+    },
+    parse_mode: "HTML"
   };
 }
 function renderEmailDetail(text, id) {
@@ -10259,6 +10265,48 @@ async function handleFlowCallback(callback, env) {
 }
 
 // src/telegram/telegram.ts
+function handleStartCommand(env) {
+  return async (msg) => {
+    const { TELEGRAM_BOT_TOKEN, DOMAIN } = env;
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+    try {
+      await api.setWebhook({
+        url: `https://${DOMAIN}/telegram/${TELEGRAM_BOT_TOKEN}/webhook`
+      });
+      await api.setMyCommands({
+        commands: telegramCommands
+      });
+    } catch (e2) {
+      console.error("Auto-init failed:", e2);
+    }
+    const text = `\u2728 <b>Bot Initialized</b>
+
+Your chat ID is <code>${msg.chat.id}</code>
+
+<b>Available Commands:</b>
+/send - Compose email
+/inbox - View history
+/reply - Reply to email
+/forward - Forward email
+/cancel - Cancel drafts
+/white - Whitelist manager
+/block - Blocklist manager
+
+<i>Settings have been synchronized with Telegram.</i>`;
+    const params = {
+      chat_id: msg.chat.id,
+      text,
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{
+          text: "\u{1F4EC} Open Dashboard",
+          web_app: { url: `https://${DOMAIN}/dashboard` }
+        }]]
+      }
+    };
+    return await api.sendMessage(params);
+  };
+}
 function handleIDCommand(env) {
   return async (msg) => {
     const text = `Your chat ID is ${msg.chat.id}`;
@@ -10290,6 +10338,32 @@ function handleOpenTMACommand(mode, text, env) {
       };
     }
     return await createTelegramBotAPI(TELEGRAM_BOT_TOKEN).sendMessage(params);
+  };
+}
+function handleInboxCommand(env) {
+  return async (msg) => {
+    const { TELEGRAM_BOT_TOKEN, DOMAIN } = env;
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+    const params = {
+      chat_id: msg.chat.id,
+      text: "\u{1F4EC} <b>Open Inbox Dashboard</b>",
+      parse_mode: "HTML"
+    };
+    if (msg.chat.type === "private") {
+      params.reply_markup = {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Inbox",
+              web_app: {
+                url: `https://${DOMAIN}/dashboard`
+              }
+            }
+          ]
+        ]
+      };
+    }
+    return await api.sendMessage(params);
   };
 }
 async function handleReplyEmailCommand(message, env) {
@@ -10339,6 +10413,39 @@ async function handleReplyEmailCommand(message, env) {
     await reply(e2.message);
   }
 }
+function handleReplyCommandText(env) {
+  return async (msg) => {
+    const { TELEGRAM_BOT_TOKEN, RESEND_API_KEY, EMAIL_STORE } = env;
+    const api = createTelegramBotAPI(TELEGRAM_BOT_TOKEN);
+    const reply = async (text) => {
+      await api.sendMessage({ chat_id: msg.chat.id, text });
+    };
+    if (!RESEND_API_KEY) {
+      await reply("Resend API is not enabled.");
+      return new Response("OK");
+    }
+    const match = msg.text?.match(/^\/reply\s+(\S+)\s+([\s\S]+)$/i);
+    if (!match) {
+      await reply("\u274C Usage: /reply <email_id> <message>");
+      return new Response("OK");
+    }
+    const mailID = match[1];
+    const bodyText = match[2];
+    const dao = new Dao(EMAIL_STORE);
+    const mail = await dao.loadMailCache(mailID);
+    if (!mail) {
+      await reply(`\u274C No email found with ID: ${mailID}`);
+      return new Response("OK");
+    }
+    try {
+      await replyToEmail(RESEND_API_KEY, mail, bodyText);
+      await reply(`\u2705 Reply sent successfully to ${mail.fromName || mail.from}`);
+    } catch (e2) {
+      await reply(`\u274C Failed to send reply: ${e2.message}`);
+    }
+    return new Response("OK");
+  };
+}
 async function telegramCommandHandler(message, env) {
   if (message?.reply_to_message) {
     await handleReplyEmailCommand(message, env);
@@ -10352,10 +10459,12 @@ async function telegramCommandHandler(message, env) {
     console.log(`Invalid command or just text: ${message.text}`);
     return;
   }
-  command = command.substring(1);
+  command = command.substring(1).split(/\s+/)[0].toLowerCase();
   const handlers = {
     id: handleIDCommand(env),
-    start: handleIDCommand(env),
+    start: handleStartCommand(env),
+    inbox: handleInboxCommand(env),
+    reply: handleReplyCommandText(env),
     test: handleOpenTMACommand("test", null, env),
     white: handleOpenTMACommand("white", null, env),
     block: handleOpenTMACommand("block", null, env)
@@ -10577,7 +10686,7 @@ function createRouter(env) {
       url: `https://${DOMAIN}/telegram/${TELEGRAM_BOT_TOKEN}/webhook`
     });
     const commands = await api.setMyCommands({
-      commands: telegramCommands2
+      commands: telegramCommands
     });
     return {
       webhook: await webhook.json(),
